@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from app.phishing.heuristics import extract_url_features, validate_url
 from app.phishing.services import run_analysis
 
 
@@ -19,24 +18,23 @@ class _CompatConfig(dict):
         )
 
 
-
-def analyze_url(url: str, timeout: int, max_redirect_depth: int, blacklist_domains: set[str], model_path: str = ''):
+def analyze_url(url: str, timeout: int, max_redirect_depth: int, blacklist_domains: set[str], model_path: str = ""):
     result = run_analysis(
         url,
         _CompatConfig(timeout=timeout, max_redirect_depth=max_redirect_depth, model_path=model_path),
         persist=False,
     )
     if result.domain in blacklist_domains:
-        result.features_summary['feature_counts']['blacklisted'] = 1.0
+        result.features_summary["feature_counts"]["blacklisted"] = 1.0
     return type(
-        'AnalysisResult',
+        "AnalysisResult",
         (),
         {
-            'url': result.normalized_url,
-            'score': result.risk_score,
-            'verdict': result.label,
-            'reasons': result.reasons,
-            'features': result.features_summary['feature_counts'],
-            'redirect_chain': result.redirect_chain,
+            "url": result.normalized_url,
+            "score": result.risk_score,
+            "verdict": result.label,
+            "reasons": result.reasons,
+            "features": result.features_summary["feature_counts"],
+            "redirect_chain": result.redirect_chain,
         },
     )()

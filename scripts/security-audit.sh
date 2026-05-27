@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-pip-audit -r requirements.txt
-bandit -q -r app
-ruff check .
-pytest -q
+python -m pip_audit -r requirements.txt
+python -m bandit -q -r app
+python -m ruff check .
+python -m pytest -q

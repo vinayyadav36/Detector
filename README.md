@@ -54,10 +54,10 @@ Change these before production use, or set `ADMIN_PASSWORD_HASH` instead.
 ## Running tests and checks
 
 ```bash
-pytest -q
-bandit -q -r app
-pip-audit -r requirements.txt
-ruff check .
+python -m pytest -q
+python -m bandit -q -r app
+python -m pip_audit -r requirements.txt
+python -m ruff check .
 ```
 
 Or run:

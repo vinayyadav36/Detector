@@ -21,13 +21,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Ruff
-        run: ruff check .
+        run: python -m ruff check .
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
       - name: Run security scan
         run: |
-          bandit -q -r app
-          pip-audit -r requirements.txt
+          python -m bandit -q -r app
+          python -m pip_audit -r requirements.txt
 
   docker:
     if: github.event_name == 'push'

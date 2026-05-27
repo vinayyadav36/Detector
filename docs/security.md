@@ -18,4 +18,4 @@ Run:
 ./scripts/security-audit.sh
 ```
 
-That executes pip-audit, Bandit, Ruff, and pytest.
+That executes pip-audit, Bandit, Ruff, and pytest via `python -m`.

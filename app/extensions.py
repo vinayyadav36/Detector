@@ -13,7 +13,6 @@ from flask_wtf import CSRFProtect
 from redis import Redis
 from redis.exceptions import RedisError
 
-
 db = SQLAlchemy()
 csrf = CSRFProtect()
 login_manager = LoginManager()
@@ -77,14 +76,12 @@ class RuntimeState:
 runtime_state = RuntimeState()
 
 
-
 def configure_redis(url: str) -> None:
     redis_client.configure(url)
 
 
-
-def record_error(message: str, *, path: str = '', error_type: str = 'server_error') -> None:
-    payload = {'message': message, 'path': path, 'type': error_type}
+def record_error(message: str, *, path: str = "", error_type: str = "server_error") -> None:
+    payload = {"message": message, "path": path, "type": error_type}
     runtime_state.last_error = payload
     with _error_lock:
         error_buffer.appendleft(payload)
