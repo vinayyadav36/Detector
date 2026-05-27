@@ -153,7 +153,11 @@ def analyze_page(
 ) -> tuple[dict[str, float], PageFetchResult]:
     fetch_result = fetch_page(url, timeout, max_redirect_depth, retry_count)
     response = fetch_result.response
-    assert response is not None
+    if response is None:
+        raise ReachabilityError(
+            message="The target website could not be fetched",
+            error_type="unreachable",
+        )
     signals = {
         "form_count": 0.0,
         "password_fields": 0.0,

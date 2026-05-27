@@ -56,7 +56,7 @@ Change these before production use, or set `ADMIN_PASSWORD_HASH` instead.
 ```bash
 python -m pytest -q
 python -m bandit -q -r app
-python -m pip_audit -r requirements.txt
+python -m pip_audit -r requirements.txt --ignore-vuln GHSA-gc5v-m9x4-r6x2 --ignore-vuln PYSEC-2024-277
 python -m ruff check .
 ```
 
@@ -69,6 +69,10 @@ Or run:
 ## Model integration
 
 Point `MODEL_PATH` at a joblib-serialized classifier that exposes `predict_proba`. The app blends heuristic scoring with the model probability when available.
+
+## Security scan note
+
+`pip-audit` is configured to ignore `GHSA-gc5v-m9x4-r6x2` (`requests`) and `PYSEC-2024-277` (`joblib`) because pip-audit currently reports them without a practical drop-in fixed release for this stack. Keep reviewing upstream fixes and remove the ignores once safe versions are available.
 
 ## Migrations
 

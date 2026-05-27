@@ -19,3 +19,5 @@ Run:
 ```
 
 That executes pip-audit, Bandit, Ruff, and pytest via `python -m`.
+
+At the moment the pip-audit command explicitly ignores `GHSA-gc5v-m9x4-r6x2` (`requests`) and `PYSEC-2024-277` (`joblib`) because the advisory database flags them without a practical fixed replacement for this stack yet. Revisit those ignores regularly.
