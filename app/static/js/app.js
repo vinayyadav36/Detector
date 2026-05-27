@@ -114,7 +114,11 @@ function setupAnalyzeForm() {
       if (!response.ok) throw new Error(payload.error?.message || 'Unable to analyze URL');
       renderResult(resultContent, payload);
       prependRecentResult(payload);
-      if (Notification.permission === 'granted' && ['suspicious', 'phishing'].includes(payload.label) && navigator.serviceWorker.ready) {
+      if (
+        'serviceWorker' in navigator &&
+        Notification.permission === 'granted' &&
+        ['suspicious', 'phishing'].includes(payload.label)
+      ) {
         const registration = await navigator.serviceWorker.ready;
         await registration.showNotification('Detector found a risky URL', { body: `${payload.domain} scored ${payload.risk_score}/100 (${payload.label})` });
       }

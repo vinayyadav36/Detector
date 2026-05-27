@@ -114,7 +114,16 @@ def create_app(config_class: type[BaseConfig] | None = None):
                 )
             )
             db.session.commit()
-        except Exception:
+        except Exception as exc:
+            app.logger.warning(
+                "request_log_failed",
+                extra={"path": request.path, "method": request.method},
+            )
+            record_error(
+                str(exc),
+                path=request.path,
+                error_type="request_log_failed",
+            )
             db.session.rollback()
         return response
 

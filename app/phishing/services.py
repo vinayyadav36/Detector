@@ -143,8 +143,6 @@ def fetch_page(url: str, timeout: int, max_redirect_depth: int, retry_count: int
             last_exception = exc
             error_type = "unreachable"
             message = "The target website could not be fetched"
-        else:
-            continue
     raise ReachabilityError(message=message, error_type=error_type) from last_exception
 
 

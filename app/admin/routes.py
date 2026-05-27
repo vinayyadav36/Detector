@@ -13,6 +13,7 @@ from werkzeug.security import check_password_hash
 from app.extensions import limiter
 from app.forms import BatchUploadForm, BlacklistForm, LoginForm
 from app.models import Analysis, Blacklist, Report, db, summary_counts
+from app.phishing.heuristics import AnalysisInputError
 from app.phishing.services import (
     analyses_to_csv,
     filtered_reports,
@@ -130,7 +131,7 @@ def batch_analyze():
             result = run_analysis(url, current_app.config)
             analysis = db.session.get(Analysis, result.analysis_id)
             rows.append(serialize_analysis(analysis))
-        except Exception as exc:  # pragma: no cover
+        except (AnalysisInputError, ValueError) as exc:  # pragma: no cover
             current_app.logger.exception("batch_analysis_failed")
             rows.append({"analysis_id": "", "url": url, "risk_score": "", "label": "", "reasons": [str(exc)]})
 
