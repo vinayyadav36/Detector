@@ -3,64 +3,59 @@ from __future__ import annotations
 from flask import (
     Blueprint,
     current_app,
-    flash,
     jsonify,
-    redirect,
-    render_template,
     request,
     send_from_directory,
-    url_for,
 )
 
 from app.extensions import limiter
-from app.forms import URLForm
 from app.models import Analysis, Feedback, db
 
 from .heuristics import AnalysisInputError
-from .services import filtered_reports, recent_analyses, run_analysis, serialize_analysis
+from .services import filtered_reports, run_analysis, serialize_analysis
 
 bp = Blueprint("phishing", __name__)
 
 
+def _serve_index():
+    return send_from_directory(current_app.static_folder, "index.html")
+
+
 @bp.route("/")
 def index():
-    return render_template(
-        "index.html",
-        form=URLForm(),
-        recent=recent_analyses(),
-        page_title="Analyze suspicious websites",
-    )
-
-
-@bp.route("/analyze", methods=["POST"])
-def analyze():
-    form = URLForm()
-    if not form.validate_on_submit():
-        flash("Please enter a valid URL or domain.", "error")
-        return redirect(url_for("phishing.index"))
-    try:
-        result = run_analysis(form.url.data, current_app.config)
-    except AnalysisInputError as exc:
-        flash(exc.message, "error")
-        return redirect(url_for("phishing.index"))
-    return redirect(url_for("phishing.result_detail", analysis_id=result.analysis_id))
+    return _serve_index()
 
 
 @bp.route("/result/<int:analysis_id>")
 def result_detail(analysis_id: int):
-    analysis = Analysis.query.get_or_404(analysis_id)
-    return render_template(
-        "result.html",
-        analysis=analysis,
-        serialized=serialize_analysis(analysis),
-        page_title="Analysis result",
-    )
+    # Still want to 404 if it doesn't exist, though UI can handle that too
+    return _serve_index()
 
 
 @bp.route("/offline")
 def offline():
-    return render_template("offline.html", page_title="Offline")
+    return _serve_index()
 
+
+@bp.route("/disclaimer")
+def disclaimer():
+    return _serve_index()
+
+
+@bp.route("/privacy")
+def privacy():
+    return _serve_index()
+
+
+@bp.route("/terms")
+def terms():
+    return _serve_index()
+
+
+
+@bp.route("/admin")
+def admin():
+    return _serve_index()
 
 @bp.route("/manifest.json")
 def manifest():
@@ -86,6 +81,12 @@ def api_analyze():
         current_app.logger.warning("invalid_analysis_input", extra={"path": request.path, "method": request.method})
         return jsonify({"error": {"type": exc.error_type, "message": exc.message}}), 400
     analysis = db.session.get(Analysis, result.analysis_id)
+    return jsonify(serialize_analysis(analysis))
+
+
+@bp.route("/api/result/<int:analysis_id>")
+def api_result(analysis_id: int):
+    analysis = Analysis.query.get_or_404(analysis_id)
     return jsonify(serialize_analysis(analysis))
 
 
@@ -134,17 +135,8 @@ def feedback(analysis_id: int):
     db.session.commit()
     return jsonify({"status": "recorded"})
 
+from flask_wtf.csrf import generate_csrf
 
-@bp.route("/disclaimer")
-def disclaimer():
-    return render_template("disclaimer.html", page_title="Disclaimer")
-
-
-@bp.route("/privacy")
-def privacy():
-    return render_template("privacy.html", page_title="Privacy")
-
-
-@bp.route("/terms")
-def terms():
-    return render_template("terms.html", page_title="Terms")
+@bp.route("/api/csrf-token")
+def api_csrf_token():
+    return jsonify({"csrf_token": generate_csrf()})

@@ -89,9 +89,10 @@ def test_api_analyze_success_returns_saved_analysis(monkeypatch):
 
 def test_admin_login_and_dashboard(monkeypatch):
     app, client = create_client()
-    response = client.post("/admin/login", data={"username": "admin", "password": "admin123"}, follow_redirects=True)
+    response = client.post("/api/admin/login", json={"username": "admin", "password": "admin123"})
     assert response.status_code == 200
-    assert b"Total analyses" in response.data
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "success"
 
 
 def test_manifest_and_service_worker_routes():

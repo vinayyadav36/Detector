@@ -44,6 +44,7 @@ def create_app(config_class: type[BaseConfig] | None = None):
     configure_logging(app)
     configure_security(app)
 
+
     login_manager.login_view = "admin.login"
     login_manager.login_message_category = "warning"
 

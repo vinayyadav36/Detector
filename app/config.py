@@ -49,8 +49,8 @@ class BaseConfig:
     BATCH_ANALYSIS_LIMIT = int(os.getenv("BATCH_ANALYSIS_LIMIT", "50"))
     CSP = {
         "default-src": "'self'",
-        "script-src": "'self'",
-        "style-src": "'self'",
+        "script-src": "'self' 'unsafe-inline' ",
+        "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data:",
         "font-src": "'self'",
         "connect-src": "'self'",
