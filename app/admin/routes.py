@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 
-from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, Response, current_app, jsonify, request, send_file
 from flask_login import current_user, login_required, login_user, logout_user
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -11,7 +11,6 @@ from reportlab.pdfgen import canvas
 from werkzeug.security import check_password_hash
 
 from app.extensions import limiter
-from app.forms import BatchUploadForm, BlacklistForm, LoginForm
 from app.models import Analysis, Blacklist, Report, db, summary_counts
 from app.phishing.heuristics import AnalysisInputError
 from app.phishing.services import (
@@ -24,35 +23,36 @@ from app.phishing.services import (
     top_phishing_domains,
 )
 
-bp = Blueprint("admin", __name__, url_prefix="/admin")
+bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 
-
-@bp.route("/login", methods=["GET", "POST"])
+@bp.route("/login", methods=["POST"])
 @limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("admin.dashboard"))
-    form = LoginForm()
-    if form.validate_on_submit():
-        from app.models import User
+        return jsonify({"status": "already_authenticated"})
 
-        user = User.query.filter_by(username=form.username.data.strip()).first()
-        if user and check_password_hash(user.password_hash, form.password.data):
-            login_user(user)
-            return redirect(url_for("admin.dashboard"))
-        flash("Invalid credentials", "error")
-    return render_template("admin/login.html", form=form, page_title="Admin login")
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+
+    from app.models import User
+
+    user = User.query.filter_by(username=username).first()
+    if user and check_password_hash(user.password_hash, password):
+        login_user(user)
+        return jsonify({"status": "success"})
+    return jsonify({"error": "Invalid credentials"}), 401
 
 
-@bp.route("/logout")
+@bp.route("/logout", methods=["POST"])
 @login_required
 @limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
 def logout():
     logout_user()
-    return redirect(url_for("phishing.index"))
+    return jsonify({"status": "success"})
 
 
-@bp.route("/")
+@bp.route("/dashboard")
 @login_required
 @limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
 def dashboard():
@@ -67,35 +67,41 @@ def dashboard():
     counts = summary_counts()
     total = sum(counts.values())
     phishing_pct = round((counts.get("phishing", 0) / total) * 100, 1) if total else 0.0
-    return render_template(
-        "admin/dashboard.html",
-        page_title="Admin dashboard",
-        reports=reports,
-        counts=counts,
-        total=total,
-        phishing_pct=phishing_pct,
-        trends=label_counts_by_day(),
-        top_domains=top_phishing_domains(),
-        blacklist=Blacklist.query.order_by(Blacklist.created_at.desc()).all(),
-        blacklist_form=BlacklistForm(),
-        batch_form=BatchUploadForm(),
-        recent=recent_analyses(),
-    )
+
+    return jsonify({
+        "reports": [serialize_analysis(item) for item in reports.items],
+        "pagination": {
+            "page": reports.page,
+            "pages": reports.pages,
+            "total": reports.total
+        },
+        "counts": counts,
+        "total": total,
+        "phishing_pct": phishing_pct,
+        "trends": label_counts_by_day(),
+        "top_domains": top_phishing_domains(),
+        "blacklist": [{"id": b.id, "domain": b.domain, "reason": b.reason} for b in Blacklist.query.order_by(Blacklist.created_at.desc()).all()],
+        "recent": [serialize_analysis(a) for a in recent_analyses()]
+    })
 
 
 @bp.route("/blacklist", methods=["POST"])
 @login_required
 @limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
 def add_blacklist_entry():
-    form = BlacklistForm()
-    if form.validate_on_submit():
-        domain = form.domain.data.strip().lower()
-        entry = Blacklist.query.filter_by(domain=domain).first()
-        if entry is None:
-            db.session.add(Blacklist(domain=domain, reason=(form.reason.data or "").strip()))
-            db.session.commit()
-            flash("Domain added to blacklist", "success")
-    return redirect(url_for("admin.dashboard"))
+    payload = request.get_json(silent=True) or {}
+    domain = (payload.get("domain") or "").strip().lower()
+    reason = (payload.get("reason") or "").strip()
+
+    if not domain:
+        return jsonify({"error": "Domain is required"}), 400
+
+    entry = Blacklist.query.filter_by(domain=domain).first()
+    if entry is None:
+        db.session.add(Blacklist(domain=domain, reason=reason))
+        db.session.commit()
+        return jsonify({"status": "added"})
+    return jsonify({"status": "already_exists"})
 
 
 @bp.route("/blacklist/<int:entry_id>/delete", methods=["POST"])
@@ -105,20 +111,21 @@ def delete_blacklist_entry(entry_id: int):
     entry = Blacklist.query.get_or_404(entry_id)
     db.session.delete(entry)
     db.session.commit()
-    flash("Blacklist entry removed", "success")
-    return redirect(url_for("admin.dashboard"))
+    return jsonify({"status": "deleted"})
 
 
 @bp.route("/batch", methods=["POST"])
 @login_required
 @limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
 def batch_analyze():
-    form = BatchUploadForm()
-    if not form.validate_on_submit():
-        flash("Upload a CSV file with a url column.", "error")
-        return redirect(url_for("admin.dashboard"))
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
 
-    data = io.StringIO(form.file.data.stream.read().decode("utf-8"))
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    data = io.StringIO(file.stream.read().decode("utf-8"))
     reader = csv.DictReader(data)
     rows = []
     for idx, row in enumerate(reader, start=1):
@@ -204,5 +211,4 @@ def export_pdf():
 @limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
 def health_page():
     from app import gather_health_snapshot
-
-    return render_template("admin/health.html", health=gather_health_snapshot(), page_title="System health")
+    return jsonify(gather_health_snapshot())
