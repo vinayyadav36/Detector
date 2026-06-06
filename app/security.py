@@ -1,29 +1,12 @@
 from __future__ import annotations
 
-import json
 import logging
 import sys
 import time
-from logging.handlers import RotatingFileHandler
 
+import structlog
 from flask import Flask, g, request
 from flask_talisman import Talisman
-
-
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        payload = {
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "logger": record.name,
-            "time": self.formatTime(record, self.datefmt),
-        }
-        for attribute in ("path", "method", "status_code", "duration_ms"):
-            if hasattr(record, attribute):
-                payload[attribute] = getattr(record, attribute)
-        if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
-        return json.dumps(payload)
 
 
 def configure_security(app: Flask) -> None:
@@ -42,21 +25,46 @@ def configure_security(app: Flask) -> None:
         session_cookie_samesite=app.config["SESSION_COOKIE_SAMESITE"],
     )
 
-
 def configure_logging(app: Flask) -> None:
-    formatter: logging.Formatter = (
-        JsonFormatter()
-        if app.config["FLASK_ENV"] == "production"
-        else logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    import os
+    log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer()
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
     )
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(formatter)
-    file_handler = RotatingFileHandler("instance/detector.log", maxBytes=5_000_000, backupCount=3)
-    file_handler.setFormatter(formatter)
+
+    handler = logging.StreamHandler(sys.stderr)
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=structlog.processors.JSONRenderer(),
+    )
+    handler.setFormatter(formatter)
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(log_level)
+
+    logging.getLogger("werkzeug").handlers.clear()
+    logging.getLogger("werkzeug").addHandler(handler)
+
     app.logger.handlers.clear()
-    app.logger.setLevel(logging.INFO)
-    app.logger.addHandler(stream_handler)
-    app.logger.addHandler(file_handler)
+    app.logger.addHandler(handler)
+    app.logger.setLevel(log_level)
+
+    logger = structlog.get_logger("app")
 
     @app.before_request
     def start_request_timer() -> None:
@@ -69,14 +77,13 @@ def configure_logging(app: Flask) -> None:
             * 1000,
             2,
         )
-        app.logger.info(
+        logger.info(
             "request_complete",
-            extra={
-                "method": request.method,
-                "path": request.path,
-                "status_code": response.status_code,
-                "duration_ms": duration_ms,
-            },
+            method=request.method,
+            path=request.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            remote_addr=request.remote_addr,
         )
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         response.headers["X-Content-Type-Options"] = "nosniff"

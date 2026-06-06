@@ -80,7 +80,8 @@ class Feedback(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     analysis_id = db.Column(db.Integer, db.ForeignKey("analyses.id"), nullable=False)
-    message = db.Column(db.String(255), default="This result seems wrong", nullable=False)
+    user_label = db.Column(db.String(30), nullable=True)
+    correct_label = db.Column(db.String(30), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 

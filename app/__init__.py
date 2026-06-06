@@ -57,8 +57,8 @@ def create_app(config_class: type[BaseConfig] | None = None):
 
     with app.app_context():
         _validate_runtime_config(app)
-        db.create_all()
-        _sync_admin_user(app)
+        # db.create_all()
+        # _sync_admin_user(app)
         runtime_state.model_loaded = bool(app.config["MODEL_PATH"])
 
     @app.context_processor
@@ -80,7 +80,9 @@ def create_app(config_class: type[BaseConfig] | None = None):
 
     @app.route("/health")
     def health():
-        return jsonify(gather_health_snapshot())
+        health_data = gather_health_snapshot()
+        status_code = 200 if health_data["db"] == "ok" and health_data["redis"] == "ok" else 503
+        return jsonify(health_data), status_code
 
     @app.route("/metrics")
     def metrics():
@@ -144,22 +146,30 @@ def _validate_runtime_config(app: Flask) -> None:
 
 def gather_health_snapshot() -> dict:
     from .models import Analysis
+    from app.celery_app import celery
 
     try:
         db.session.execute(db.text("SELECT 1"))
-        db_ok = True
+        db_ok = "ok"
     except Exception:
-        db_ok = False
+        db_ok = "fail"
+
     try:
-        redis_ok = bool(redis_client.ping())
+        redis_ok = "ok" if redis_client.ping() else "fail"
     except Exception:
-        redis_ok = False
+        redis_ok = "fail"
+
+    try:
+        inspector = celery.control.inspect()
+        active = inspector.active()
+        celery_worker = "ok" if active else "unreachable"
+    except Exception:
+        celery_worker = "unreachable"
+
     return {
-        "status": "ok" if db_ok else "degraded",
-        "database": db_ok,
+        "db": db_ok,
         "redis": redis_ok,
         "model_loaded": runtime_state.model_loaded,
-        "last_error": runtime_state.last_error,
-        "recent_errors": list(error_buffer),
-        "total_analyses": Analysis.query.count() if db_ok else 0,
+        "celery_worker": celery_worker,
+        "version": "1.0.0"
     }

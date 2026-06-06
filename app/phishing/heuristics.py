@@ -174,5 +174,32 @@ def get_domain_intelligence(
     except Exception:
         reasons.append("WHOIS lookup unavailable")
 
+    try:
+        import dns.resolver
+        txt_records = []
+        try:
+            answers = dns.resolver.resolve(host, 'TXT', lifetime=2.0)
+            for rdata in answers:
+                txt_records.append(rdata.to_text())
+        except Exception:
+            pass
+
+        has_spf = any("v=spf1" in txt for txt in txt_records)
+        info["has_spf"] = has_spf
+
+        dmarc_host = "_dmarc." + host
+        has_dmarc = False
+        try:
+            dmarc_answers = dns.resolver.resolve(dmarc_host, 'TXT', lifetime=2.0)
+            for rdata in dmarc_answers:
+                if "v=DMARC1" in rdata.to_text():
+                    has_dmarc = True
+                    break
+        except Exception:
+            pass
+        info["has_dmarc"] = has_dmarc
+    except ImportError:
+        pass
+
     cache_set(cache_key, {"info": info, "reasons": reasons}, ttl_seconds)
     return info, reasons

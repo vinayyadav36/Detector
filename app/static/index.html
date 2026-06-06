@@ -74,8 +74,17 @@
       <div class="hero">
         <h1>Analysis result</h1>
         <div id="result-detail-content">Loading...</div>
-        <form id="feedback-form" action="" method="post" style="margin-top: 2rem;">
-          <button type="submit" class="button button-secondary">Report incorrect label</button>
+                <form id="feedback-form" style="margin-top: 2rem;">
+          <input type="hidden" name="analysis_id" id="feedback-analysis-id" value="">
+          <div class="form-group" style="margin-bottom: 1rem;">
+             <label>This result seems wrong. What is the correct label?</label>
+             <select name="correct_label" class="form-control" style="width: 200px;">
+                <option value="safe">Safe</option>
+                <option value="suspicious">Suspicious</option>
+                <option value="phishing">Phishing</option>
+             </select>
+          </div>
+          <button type="submit" class="button button-secondary">Submit Feedback</button>
         </form>
       </div>
     </template>
