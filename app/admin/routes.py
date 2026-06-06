@@ -12,13 +12,11 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import limiter
 from app.models import Analysis, Blacklist, Report, db, summary_counts
-from app.phishing.heuristics import AnalysisInputError
 from app.phishing.services import (
     analyses_to_csv,
     filtered_reports,
     label_counts_by_day,
     recent_analyses,
-    run_analysis,
     serialize_analysis,
     top_phishing_domains,
 )
@@ -114,7 +112,7 @@ def delete_blacklist_entry(entry_id: int):
     return jsonify({"status": "deleted"})
 
 
-@bp.route("/batch", methods=["POST"])
+@bp.route("/bulk-upload", methods=["POST"])
 @login_required
 @limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
 def batch_analyze():
@@ -125,22 +123,43 @@ def batch_analyze():
     if not file.filename:
         return jsonify({"error": "No file uploaded"}), 400
 
+    from celery import group
+
+    from app.celery_app import analyze_url_task
+
     data = io.StringIO(file.stream.read().decode("utf-8"))
     reader = csv.DictReader(data)
-    rows = []
+    tasks = []
+    urls = []
+
     for idx, row in enumerate(reader, start=1):
         if idx > current_app.config["BATCH_ANALYSIS_LIMIT"]:
             break
         url = (row.get("url") or "").strip()
-        if not url:
-            continue
-        try:
-            result = run_analysis(url, current_app.config)
-            analysis = db.session.get(Analysis, result.analysis_id)
-            rows.append(serialize_analysis(analysis))
-        except (AnalysisInputError, ValueError) as exc:  # pragma: no cover
-            current_app.logger.exception("batch_analysis_failed")
-            rows.append({"analysis_id": "", "url": url, "risk_score": "", "label": "", "reasons": [str(exc)]})
+        if url:
+            tasks.append(analyze_url_task.s(url))
+            urls.append(url)
+
+    if not tasks:
+        return jsonify({"error": "No URLs found in CSV"}), 400
+
+    job = group(tasks)
+    result = job.apply_async()
+
+    try:
+        results = result.get(timeout=60)
+    except Exception as e:
+        return jsonify({"error": "Batch processing timed out or failed", "details": str(e)}), 500
+
+    rows = []
+    for r in results:
+        analysis_id = r.get("analysis_id")
+        if analysis_id:
+            analysis = db.session.get(Analysis, analysis_id)
+            if analysis:
+                rows.append(serialize_analysis(analysis))
+        else:
+            rows.append({"analysis_id": "", "url": r.get("raw_url", ""), "risk_score": "", "label": "", "reasons": r.get("reasons", [])})
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -155,13 +174,14 @@ def batch_analyze():
                 "; ".join(row.get("reasons", [])),
             ]
         )
-    db.session.add(Report(title="Batch CSV analysis", content=f"Processed {len(rows)} URLs"))
+    db.session.add(Report(title="Batch CSV analysis", content=f"Processed {len(rows)} URLs via Celery"))
     db.session.commit()
     return Response(
         output.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=batch-analysis-results.csv"},
     )
+
 
 
 @bp.route("/export.csv")
@@ -212,3 +232,17 @@ def export_pdf():
 def health_page():
     from app import gather_health_snapshot
     return jsonify(gather_health_snapshot())
+
+@bp.route("/stats")
+@login_required
+@limiter.limit(lambda: current_app.config["ADMIN_RATE_LIMIT"])
+def stats():
+    counts = summary_counts()
+    total = sum(counts.values())
+    phishing_pct = round((counts.get("phishing", 0) / total) * 100, 1) if total else 0.0
+
+    return jsonify({
+        "counts": counts,
+        "total": total,
+        "phishing_pct": phishing_pct,
+    })

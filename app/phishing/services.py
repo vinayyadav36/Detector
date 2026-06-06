@@ -177,6 +177,19 @@ def analyze_page(
         reasons.append(f'Page contains iframe elements ({int(signals["iframe_count"])})')
     if signals["external_script_count"]:
         reasons.append("Page loads external scripts")
+    from .phaas_signatures import detect_phaas_signatures
+    if detect_phaas_signatures(text):
+        reasons.append("Known phishing kit signature detected")
+
+    if "blob:" in text:
+        signals["blob_uri_count"] = float(text.count("blob:"))
+        if signals["blob_uri_count"]:
+            reasons.append("Uses obfuscation: Blob URI")
+
+    if "data:image/png;base64" in text or "data:image/jpeg;base64" in text:
+        signals["data_uri_count"] = 1.0
+        reasons.append("Uses obfuscation: data: URI image (potential QR code)")
+
     fetch_result.reasons = reasons
     return signals, fetch_result
 
@@ -200,11 +213,23 @@ def score_analysis(features: dict[str, float], reasons: list[str], config: dict[
     elif 0 < features["domain_age_days"] < config["YOUNG_DOMAIN_DAYS"]:
         score += config["YOUNG_DOMAIN_PENALTY"]
     if features["blacklisted"]:
-        score = max(score, 95)
+        score += 50
+    if any("Brand impersonation:" in r for r in reasons):
+        score += 30
+    if any("Known phishing kit signature detected" in r for r in reasons):
+        score += 40
+    if any("Uses obfuscation: Blob URI" in r for r in reasons):
+        score += 15
+    if any("Uses obfuscation: data: URI image" in r for r in reasons):
+        score += 15
+    if features.get("brand_impersonation", 0.0) == 1.0:
+        if features.get("has_spf", 1.0) == 0.0 or features.get("has_dmarc", 1.0) == 0.0:
+            score += 20
+            reasons.append("Domain mimics a brand but is missing SPF or DMARC records")
     if any("HTTP 4" in reason or "HTTP 5" in reason for reason in reasons):
         score += 4
     score = max(0, min(score, 100))
-    if score >= config["PHISHING_THRESHOLD"]:
+    if features["blacklisted"] or score >= config["PHISHING_THRESHOLD"]:
         label = "phishing"
     elif score >= config["SUSPICIOUS_THRESHOLD"]:
         label = "suspicious"
@@ -279,6 +304,17 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
     features["blacklisted"] = 1.0 if is_blacklisted(domain) else 0.0
     if features["blacklisted"]:
         reasons.append("Domain appears on the local blacklist")
+
+    from .brand_impersonation import detect_brand_impersonation
+    brand_reason = detect_brand_impersonation(normalized, domain)
+    if brand_reason:
+        reasons.append(brand_reason)
+        features["brand_impersonation"] = 1.0
+    else:
+        features["brand_impersonation"] = 0.0
+
+    features["has_spf"] = 1.0 if domain_info.get("has_spf") else 0.0
+    features["has_dmarc"] = 1.0 if domain_info.get("has_dmarc") else 0.0
 
     base_score, label = score_analysis(features, reasons, config)
     ml_score, ml_reason = predict(features, config["MODEL_PATH"])

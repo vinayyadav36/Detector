@@ -102,7 +102,12 @@ const routes = {
   '/admin': viewAdmin
 };
 
+
 function router() {
+  if (window._statsInterval) {
+      clearInterval(window._statsInterval);
+      window._statsInterval = null;
+  }
   const path = window.location.pathname;
   console.log("Routing to: ", path);
   const appView = document.getElementById('app-view');
@@ -142,7 +147,6 @@ function viewIndex() {
   const errorBox = document.getElementById('analysis-error');
 
   if (form) {
-    console.log('Form bound!');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       errorBox.classList.add('hidden');
@@ -150,7 +154,7 @@ function viewIndex() {
       const url = String(formData.get('url') || '').trim();
 
       try {
-        // Fetch CSRF token if needed, or rely on API not needing it if we change auth
+        resultContent.innerHTML = '<div class="spinner"></div><p>Queueing analysis...</p>';
         const response = await fetch('/api/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
@@ -158,23 +162,71 @@ function viewIndex() {
         });
         const payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload.error?.message || 'Unable to analyze URL.');
+          throw new Error(payload.error?.message || 'Unable to queue URL.');
         }
-        renderResult(resultContent, payload);
-        prependRecentResult(payload);
 
-        // Re-attach routing to the new result link
-        const detailLink = resultContent.querySelector('a');
-        if (detailLink) {
-          detailLink.addEventListener('click', e => {
-            e.preventDefault();
-            window.history.pushState({}, '', detailLink.href);
-            router();
-          });
+        if (payload.status === "queued" && payload.job_id) {
+            resultContent.innerHTML = '<div class="spinner"></div><p>Analyzing in progress...</p>';
+            let attempts = 0;
+            const pollInterval = setInterval(async () => {
+                attempts++;
+                if (attempts > 60) { // 2 mins max
+                    clearInterval(pollInterval);
+                    errorBox.textContent = 'Analysis timed out.';
+                    errorBox.classList.remove('hidden');
+                    resultContent.innerHTML = '<p class="muted">Enter a URL above to begin.</p>';
+                    return;
+                }
+
+                try {
+                    const statusRes = await fetch(`/api/status/${payload.job_id}`);
+                    if (statusRes.ok) {
+                        const statusData = await statusRes.json();
+                        if (statusData.status === "completed") {
+                            clearInterval(pollInterval);
+                            renderResult(resultContent, statusData);
+                            prependRecentResult(statusData);
+
+                            const detailLink = resultContent.querySelector('a');
+                            if (detailLink) {
+                              detailLink.addEventListener('click', e => {
+                                e.preventDefault();
+                                window.history.pushState({}, '', detailLink.href);
+                                router();
+                              });
+                            }
+                        } else if (statusData.status === "failed") {
+                            clearInterval(pollInterval);
+                            throw new Error(statusData.error || 'Analysis failed.');
+                        }
+                    } else if (statusRes.status >= 400) {
+                         const errData = await statusRes.json();
+                         clearInterval(pollInterval);
+                         throw new Error(errData.error || 'Analysis failed.');
+                    }
+                } catch (pollErr) {
+                    clearInterval(pollInterval);
+                    errorBox.textContent = pollErr.message;
+                    errorBox.classList.remove('hidden');
+                    resultContent.innerHTML = '<p class="muted">Enter a URL above to begin.</p>';
+                }
+            }, 2000);
+        } else {
+            renderResult(resultContent, payload);
+            prependRecentResult(payload);
+            const detailLink = resultContent.querySelector('a');
+            if (detailLink) {
+              detailLink.addEventListener('click', e => {
+                e.preventDefault();
+                window.history.pushState({}, '', detailLink.href);
+                router();
+              });
+            }
         }
       } catch (error) {
         errorBox.textContent = error.message;
         errorBox.classList.remove('hidden');
+        resultContent.innerHTML = '<p class="muted">Enter a URL above to begin.</p>';
       }
     });
   }
@@ -216,11 +268,21 @@ async function viewResult(id) {
       </div>
     `;
 
-    if (form) {
-      form.action = `/feedback/${id}`;
+        if (form) {
+      document.getElementById('feedback-analysis-id').value = id;
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const feedbackRes = await fetch(form.action, { method: 'POST', headers: { 'X-CSRFToken': getCsrfToken() } });
+        const fd = new FormData(form);
+        const payload = {
+           analysis_id: fd.get('analysis_id'),
+           correct_label: fd.get('correct_label'),
+           user_label: 'user'
+        };
+        const feedbackRes = await fetch('/api/feedback', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+           body: JSON.stringify(payload)
+        });
         if (feedbackRes.ok) form.innerHTML = '<p class="helper">Feedback recorded for future tuning.</p>';
       });
     }
@@ -343,15 +405,37 @@ function renderAdminDashboard(data) {
       });
   }
 
-  // Stats
+// Stats
   const statsDiv = document.getElementById('admin-stats-content');
   if (statsDiv) {
     statsDiv.innerHTML = `
-      <p><strong>Total Analyses:</strong> ${data.total}</p>
-      <p><strong>Safe:</strong> ${data.counts?.safe || 0}</p>
-      <p><strong>Suspicious:</strong> ${data.counts?.suspicious || 0}</p>
-      <p><strong>Phishing:</strong> ${data.counts?.phishing || 0} (${data.phishing_pct}%)</p>
+      <p><strong>Total Analyses:</strong> <span id="stat-total">${data.total}</span></p>
+      <p><strong>Safe:</strong> <span id="stat-safe">${data.counts?.safe || 0}</span></p>
+      <p><strong>Suspicious:</strong> <span id="stat-suspicious">${data.counts?.suspicious || 0}</span></p>
+      <p><strong>Phishing:</strong> <span id="stat-phishing">${data.counts?.phishing || 0}</span> (<span id="stat-pct">${data.phishing_pct}</span>%)</p>
     `;
+
+    // Auto refresh stats
+    if (!window._statsInterval) {
+        window._statsInterval = setInterval(async () => {
+           if (document.getElementById('admin-stats-content')) {
+               try {
+                   const res = await fetch('/api/admin/stats');
+                   if (res.ok) {
+                       const d = await res.json();
+                       document.getElementById('stat-total').textContent = d.total;
+                       document.getElementById('stat-safe').textContent = d.counts?.safe || 0;
+                       document.getElementById('stat-suspicious').textContent = d.counts?.suspicious || 0;
+                       document.getElementById('stat-phishing').textContent = d.counts?.phishing || 0;
+                       document.getElementById('stat-pct').textContent = d.phishing_pct;
+                   }
+               } catch (e) {}
+           } else {
+               clearInterval(window._statsInterval);
+               window._statsInterval = null;
+           }
+        }, 30000);
+    }
   }
 
   // Batch
@@ -363,7 +447,7 @@ function renderAdminDashboard(data) {
       batchError.classList.add('hidden');
       const formData = new FormData(batchForm);
       try {
-        const res = await fetch('/api/admin/batch', {
+        const res = await fetch('/api/admin/bulk-upload', {
           method: 'POST',
           headers: { 'X-CSRFToken': window._csrfToken },
           body: formData

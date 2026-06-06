@@ -11,8 +11,7 @@ from flask import (
 from app.extensions import limiter
 from app.models import Analysis, Feedback, db
 
-from .heuristics import AnalysisInputError
-from .services import filtered_reports, run_analysis, serialize_analysis
+from .services import filtered_reports, serialize_analysis
 
 bp = Blueprint("phishing", __name__)
 
@@ -75,13 +74,41 @@ def service_worker():
 def api_analyze():
     payload = request.get_json(silent=True) or {}
     url = (payload.get("url") or "").strip()
-    try:
-        result = run_analysis(url, current_app.config)
-    except AnalysisInputError as exc:
+    if not url:
+        return jsonify({"error": {"type": "invalid_url", "message": "URL is required"}}), 400
+
+    # We validate URL before queueing to avoid queueing junk
+    from .heuristics import validate_url
+    ok, message = validate_url(url)
+    if not ok:
         current_app.logger.warning("invalid_analysis_input", extra={"path": request.path, "method": request.method})
-        return jsonify({"error": {"type": exc.error_type, "message": exc.message}}), 400
-    analysis = db.session.get(Analysis, result.analysis_id)
-    return jsonify(serialize_analysis(analysis))
+        return jsonify({"error": {"type": "invalid_url", "message": message}}), 400
+
+    from app.celery_app import analyze_url_task
+    task = analyze_url_task.delay(url)
+    return jsonify({"job_id": task.id, "status": "queued"})
+
+@bp.route("/api/status/<job_id>")
+def api_status(job_id: str):
+    from app.celery_app import analyze_url_task
+    task = analyze_url_task.AsyncResult(job_id)
+    if task.state == 'PENDING' or task.state == 'STARTED':
+        return jsonify({"status": "queued"})
+    elif task.state == 'SUCCESS':
+        # The task returns the dict from run_analysis
+        result_dict = task.result
+        # Load from DB to serialize
+        analysis_id = result_dict.get('analysis_id')
+        if analysis_id:
+            analysis = db.session.get(Analysis, analysis_id)
+            if analysis:
+                payload = serialize_analysis(analysis)
+                payload["status"] = "completed"
+                return jsonify(payload)
+        return jsonify({"error": "Analysis completed but result not found"}), 404
+    else:
+        return jsonify({"status": "failed", "error": str(task.info)}), 500
+
 
 
 @bp.route("/api/result/<int:analysis_id>")
@@ -128,14 +155,21 @@ def api_export_json():
     return jsonify({"items": [serialize_analysis(item) for item in pagination.items]})
 
 
-@bp.route("/feedback/<int:analysis_id>", methods=["POST"])
-def feedback(analysis_id: int):
+@bp.route("/api/feedback", methods=["POST"])
+def api_feedback():
+    payload = request.get_json(silent=True) or {}
+    analysis_id = payload.get("analysis_id")
+    if not analysis_id:
+        return jsonify({"error": "analysis_id is required"}), 400
     analysis = Analysis.query.get_or_404(analysis_id)
-    db.session.add(Feedback(analysis_id=analysis.id))
+    user_label = payload.get("user_label")
+    correct_label = payload.get("correct_label")
+    db.session.add(Feedback(analysis_id=analysis.id, user_label=user_label, correct_label=correct_label))
     db.session.commit()
     return jsonify({"status": "recorded"})
 
 from flask_wtf.csrf import generate_csrf
+
 
 @bp.route("/api/csrf-token")
 def api_csrf_token():

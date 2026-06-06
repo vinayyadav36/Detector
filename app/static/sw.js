@@ -15,9 +15,10 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET') return;
-  if (url.pathname.startsWith('/result/')) {
+if (url.pathname.startsWith('/api/result/') || url.pathname.startsWith('/result/')) {
     event.respondWith(
       caches.open(RESULT_CACHE).then(async (cache) => {
+
         const cached = await cache.match(request);
         const network = fetch(request)
           .then((response) => {

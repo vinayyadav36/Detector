@@ -14,7 +14,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: gunicorn -c gunicorn.conf.py run:app
+    command: sh -c "flask db upgrade && gunicorn -c gunicorn.conf.py run:app"
     ports:
       - "5000:5000"
     healthcheck:
