@@ -7,7 +7,7 @@ function escapeHtml(value) {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('\"', '&quot;')
-    .replaceAll(\"'\", '&#39;');
+    .replaceAll("'", '&#39;');
 }
 
 function safeLabel(value) {

@@ -76,6 +76,7 @@ class BaseConfig:
 
 class DevelopmentConfig(BaseConfig):
     SESSION_COOKIE_SECURE = False
+    WTF_CSRF_ENABLED = False
 
 
 class ProductionConfig(BaseConfig):

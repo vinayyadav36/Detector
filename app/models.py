@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask_login import UserMixin
 from sqlalchemy import func
@@ -110,7 +110,7 @@ def summary_counts() -> dict[str, int]:
 
 
 def prune_old_data(*, request_log_retention_days: int, report_retention_days: int) -> dict[str, int]:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     request_log_cutoff = now - timedelta(days=max(request_log_retention_days, 1))
     report_cutoff = now - timedelta(days=max(report_retention_days, 1))
     deleted_request_logs = (
