@@ -52,6 +52,8 @@ function renderResult(target, result) {
   const errorHtml = result.error
     ? `<p class="flash flash-error">${escapeHtml(result.error.message || '')}</p>`
     : '';
+  const reportId = result.analysis_id;
+  const reportLink = reportId ? `<a href="/report/${reportId}" class="primary-button report-link">View Full Report</a>` : '';
   target.innerHTML = `
     <div class="pill pill-${label}">${escapeHtml(String(score))}/100 · ${escapeHtml(label)}</div>
     <p><strong>${domain}</strong></p>
@@ -59,6 +61,7 @@ function renderResult(target, result) {
     <p>Reachability: ${reachability}</p>
     ${reasons ? `<ul class="bullet-list">${reasons}</ul>` : ''}
     ${errorHtml}
+    ${reportLink}
   `;
 }
 
@@ -68,8 +71,9 @@ function prependRecentResult(result) {
   const container = document.getElementById('recent-results');
   if (!container) return;
   const label = safeLabel(result.label);
-  const item = document.createElement('div');
+  const item = document.createElement('a');
   item.className = 'recent-item';
+  item.href = result.analysis_id ? `/report/${result.analysis_id}` : '#';
   item.innerHTML = `<span class="pill pill-${label}">${escapeHtml(label)}</span><strong>${escapeHtml(result.domain || result.url)}</strong><small>just now</small>`;
   const placeholder = container.querySelector('.muted');
   if (placeholder) placeholder.remove();
@@ -91,6 +95,23 @@ async function registerServiceWorker() {
         }
       });
     }
+    registration.addEventListener('updatefound', () => {
+      const newWorker = registration.installing;
+      if (newWorker) {
+        newWorker.addEventListener('statechange', () => {
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            newWorker.postMessage({ action: 'skipWaiting' });
+          }
+        });
+      }
+    });
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
   } catch (error) {
     console.warn('Service worker registration skipped:', error.message);
   }
@@ -130,10 +151,10 @@ function setupThemeToggle() {
 function setLoadingState(resultContent, loading) {
   if (loading) {
     resultContent.innerHTML = `
-      <div class="skeleton skeleton-text" style="width:60%"></div>
+      <div class="skeleton skeleton-text skeleton-w60"></div>
       <div class="skeleton skeleton-text"></div>
-      <div class="skeleton skeleton-text" style="width:80%"></div>
-      <p class="muted" style="margin-top:1rem">Analyzing URL\u2026</p>
+      <div class="skeleton skeleton-text skeleton-w80"></div>
+      <p class="muted skeleton-mt">Analyzing URL\u2026</p>
     `;
   }
 }
@@ -198,11 +219,19 @@ function setupFeedback() {
   if (!form) return;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const response = await fetch(form.action, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': getCsrfToken() },
-    });
-    if (response.ok) form.innerHTML = '<p class="helper">Feedback recorded \u2014 thank you!</p>';
+    const formData = new FormData(form);
+    const data = {};
+    formData.forEach((value, key) => { data[key] = value; });
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify(data),
+      });
+      if (response.ok) form.innerHTML = '<p class="helper">Feedback recorded \u2014 thank you!</p>';
+    } catch (e) {
+      console.warn('Feedback submission failed:', e.message);
+    }
   });
 }
 

@@ -19,7 +19,6 @@ class BaseConfig:
     FLASK_ENV = os.getenv("FLASK_ENV", "development")
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = False
     ANALYZE_RATE_LIMIT = os.getenv("ANALYZE_RATE_LIMIT", "30/hour")
     REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "10"))
@@ -31,6 +30,8 @@ class BaseConfig:
     YOUNG_DOMAIN_DAYS = 30
     NEW_DOMAIN_PENALTY = 20
     YOUNG_DOMAIN_PENALTY = 10
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+    RESULTS_DIR = os.getenv("RESULTS_DIR", "results")
     CSP = {
         "default-src": "'self'",
         "script-src": "'self'",

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'detector-shell-v1';
+const CACHE_NAME = 'detector-shell-v2';
 const RESULT_CACHE = 'detector-results-v1';
 const SHELL_URLS = ['/', '/offline', '/manifest.json', '/static/css/app.css', '/static/js/app.js', '/static/icons/icon-192.png'];
 
@@ -7,8 +7,16 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.action === 'skipWaiting') self.skipWaiting();
+});
+
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(
+      keys.filter((k) => k !== CACHE_NAME && k !== RESULT_CACHE).map((k) => caches.delete(k))
+    )).then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from flask import (
     Blueprint,
     current_app,
@@ -51,6 +54,42 @@ def api_feedback():
     analysis.feedback_note = note
     db.session.commit()
     return jsonify({"status": "recorded"})
+
+
+@bp.route("/report/<int:analysis_id>")
+def report_detail(analysis_id):
+    analysis = db.session.get(Analysis, analysis_id)
+    if not analysis:
+        return render_template("errors/404.html", page_title="Not found"), 404
+    data = serialize_analysis(analysis)
+    results_dir = Path(current_app.config.get("RESULTS_DIR", "results"))
+    json_path = results_dir / f"{analysis_id}.json"
+    if json_path.exists():
+        try:
+            with open(json_path, encoding="utf-8") as f:
+                extra = json.load(f)
+                data["ai_analysis"] = extra.get("ai_analysis")
+        except (json.JSONDecodeError, OSError):
+            pass
+    return render_template("report.html", data=data, page_title=f"Report #{analysis_id}")
+
+
+@bp.route("/api/report/<int:analysis_id>")
+def api_report(analysis_id):
+    analysis = db.session.get(Analysis, analysis_id)
+    if not analysis:
+        return jsonify({"error": "not found"}), 404
+    data = serialize_analysis(analysis)
+    results_dir = Path(current_app.config.get("RESULTS_DIR", "results"))
+    json_path = results_dir / f"{analysis_id}.json"
+    if json_path.exists():
+        try:
+            with open(json_path, encoding="utf-8") as f:
+                extra = json.load(f)
+                data["ai_analysis"] = extra.get("ai_analysis")
+        except (json.JSONDecodeError, OSError):
+            pass
+    return jsonify(data)
 
 
 @bp.route("/offline")

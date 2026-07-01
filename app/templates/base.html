@@ -9,7 +9,7 @@
     <link rel="manifest" href="{{ url_for('phishing.manifest') }}">
     <link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=3">
   </head>
   <body>
     <div class="shell">
@@ -35,7 +35,7 @@
         <p>Production-ready suspicious website detector with installable PWA support.</p>
       </footer>
     </div>
-    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=3" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card report-header">
+  <div class="report-title">
+    <h1>Analysis Report</h1>
+    <a href="{{ url_for('phishing.index') }}" class="ghost-button">&larr; Back</a>
+  </div>
+</section>
+
+<section class="grid two-up">
+  <article class="card">
+    <h2>Summary</h2>
+    <div class="key-value">
+      <div><span>URL</span><span class="mono">{{ data.url }}</span></div>
+      <div><span>Domain</span><span>{{ data.domain }}</span></div>
+      <div><span>Risk Score</span><span class="score-{{ data.label }}">{{ data.risk_score }}/100</span></div>
+      <div><span>Label</span><span class="pill pill-{{ data.label }}">{{ data.label }}</span></div>
+      <div><span>Reachability</span><span>{{ data.reachability | replace('_', ' ') }}</span></div>
+      <div><span>Status Code</span><span>{{ data.status_code or 'N/A' }}</span></div>
+      <div><span>Analyzed</span><span>{{ data.created_at }}</span></div>
+    </div>
+  </article>
+
+  <article class="card">
+    <h2>Signals &amp; Reasons</h2>
+    {% if data.reasons %}
+    <ul class="bullet-list">
+      {% for reason in data.reasons %}
+      <li>{{ reason }}</li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No specific signals detected.</p>
+    {% endif %}
+  </article>
+</section>
+
+{% if data.ai_analysis and data.ai_analysis.available %}
+<section class="card">
+  <h2>AI-Powered Analysis</h2>
+  <div class="key-value">
+    {% if data.ai_analysis.risk_level %}
+    <div><span>Risk Level</span><span class="pill pill-{{ 'phishing' if data.ai_analysis.risk_level == 'high' else 'suspicious' if data.ai_analysis.risk_level == 'medium' else 'safe' }}">{{ data.ai_analysis.risk_level }}</span></div>
+    {% endif %}
+  </div>
+  {% if data.ai_analysis.summary %}
+  <p>{{ data.ai_analysis.summary }}</p>
+  {% endif %}
+  {% if data.ai_analysis.detailed_assessment %}
+  <div class="log-box">{{ data.ai_analysis.detailed_assessment }}</div>
+  {% endif %}
+  {% if data.ai_analysis.key_indicators %}
+  <h3>Key Indicators</h3>
+  <ul class="bullet-list">
+    {% for indicator in data.ai_analysis.key_indicators %}
+    <li>{{ indicator }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if data.ai_analysis.recommendations %}
+  <h3>Recommendations</h3>
+  <ul class="bullet-list">
+    {% for rec in data.ai_analysis.recommendations %}
+    <li>{{ rec }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% elif data.ai_analysis %}
+<section class="card">
+  <h2>AI Analysis</h2>
+  <p class="muted">{{ data.ai_analysis.message }}</p>
+</section>
+{% endif %}
+
+{% if data.redirect_chain and data.redirect_chain|length > 1 %}
+<section class="card">
+  <h2>Redirect Chain</h2>
+  <ol class="bullet-list">
+    {% for url in data.redirect_chain %}
+    <li class="mono">{{ url }}</li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Features Summary</h2>
+  {% if data.features_summary %}
+  <div class="key-value">
+    {% for key, value in data.features_summary.items() %}
+    {% if value is mapping %}
+    <details>
+      <summary>{{ key | replace('_', ' ') | title }}</summary>
+      <div class="key-value nested">
+        {% for k, v in value.items() %}
+        <div><span>{{ k | replace('_', ' ') }}</span><span>{{ v }}</span></div>
+        {% endfor %}
+      </div>
+    </details>
+    {% else %}
+    <div><span>{{ key | replace('_', ' ') }}</span><span>{{ value }}</span></div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No feature data available.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Feedback</h2>
+  <form id="feedback-form" action="{{ url_for('phishing.api_feedback') }}" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="analysis_id" value="{{ data.analysis_id }}">
+    <p class="helper">Was this analysis accurate?</p>
+    <div class="action-row">
+      <button class="primary-button" type="submit" name="verdict" value="satisfied">Yes, accurate</button>
+      <button class="ghost-button" type="submit" name="verdict" value="not_satisfied">No, inaccurate</button>
+    </div>
+  </form>
+</section>
+
+<section class="card action-row">
+  <a href="{{ url_for('phishing.api_report', analysis_id=data.analysis_id) }}" class="ghost-button" download>Export JSON</a>
+  <a href="{{ url_for('phishing.index') }}" class="ghost-button">New Analysis</a>
+</section>
+{% endblock %}
+
+{% block scripts %}{% endblock %}

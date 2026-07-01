@@ -15,6 +15,7 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(BaseConfig)
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
+    Path(app.config.get("RESULTS_DIR", "results")).mkdir(parents=True, exist_ok=True)
     db.init_app(app)
     csrf.init_app(app)
     limiter.init_app(app)

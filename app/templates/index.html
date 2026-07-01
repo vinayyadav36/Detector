@@ -40,11 +40,11 @@
     <h2>Recent analyses</h2>
     <div id="recent-results" class="recent-results">
       {% for item in recent %}
-        <div class="recent-item">
+        <a href="{{ url_for('phishing.report_detail', analysis_id=item.id) }}" class="recent-item">
           <span class="pill pill-{{ item.label }}">{{ item.label }}</span>
           <strong>{{ item.domain }}</strong>
           <small>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
-        </div>
+        </a>
       {% else %}
         <p class="muted">No scans yet.</p>
       {% endfor %}

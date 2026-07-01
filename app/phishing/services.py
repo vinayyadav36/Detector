@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -20,6 +22,7 @@ from requests.exceptions import Timeout as RequestsTimeout
 from sqlalchemy import func
 from urllib3.util.retry import Retry
 
+from app import ai_service
 from app.extensions import db
 from app.models import Analysis
 
@@ -53,6 +56,8 @@ class AnalysisResult:
     error_type: str | None = None
     error_message: str | None = None
     analysis_id: int | None = None
+    ai_analysis: dict[str, Any] | None = None
+    json_file: str | None = None
 
 
 @dataclass
@@ -438,6 +443,10 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
     risk_score, label = score_analysis(features, page_signals, reasons, config)
 
     # Build features_summary
+    page_text = ""
+    if response is not None and hasattr(response, "text") and response.text:
+        page_text = response.text
+
     features_summary = {
         "url_features": {k: v for k, v in features.items() if k != "path_length"},
         "page_signals": page_signals,
@@ -467,6 +476,12 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
     if persist:
         analysis = save_analysis(result)
         result.analysis_id = analysis.id
+
+    ai_data = ai_service.analyze_with_ai(result.normalized_url, page_text, features_summary)
+    result.ai_analysis = ai_data
+
+    json_file = _save_result_json(result)
+    result.json_file = json_file
 
     try:
         current_app.logger.info(
@@ -525,7 +540,39 @@ def serialize_analysis(analysis: Analysis) -> dict[str, Any]:
         "created_at": analysis.created_at.isoformat() if analysis.created_at else None,
         "feedback": analysis.feedback,
         "feedback_note": analysis.feedback_note,
+        "json_file": f"/api/report/{analysis.id}",
+        "report_url": f"/report/{analysis.id}",
     }
+
+
+def _save_result_json(result: AnalysisResult) -> str | None:
+    if result.analysis_id is None:
+        return None
+    results_dir = Path(current_app.config.get("RESULTS_DIR", "results"))
+    results_dir.mkdir(parents=True, exist_ok=True)
+    data = {
+        "analysis_id": result.analysis_id,
+        "url": result.normalized_url,
+        "raw_url": result.raw_url,
+        "domain": result.domain,
+        "url_hash": result.url_hash,
+        "risk_score": result.risk_score,
+        "label": result.label,
+        "reasons": result.reasons,
+        "reachability": result.reachability,
+        "redirect_chain": result.redirect_chain,
+        "status_code": result.status_code,
+        "features_summary": result.features_summary,
+        "explanations": result.explanations,
+        "error_type": result.error_type,
+        "error_message": result.error_message,
+        "ai_analysis": result.ai_analysis,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    file_path = results_dir / f"{result.analysis_id}.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, default=str)
+    return str(file_path)
 
 
 def recent_analyses(limit: int = 10) -> list[Analysis]:
