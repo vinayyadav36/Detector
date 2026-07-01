@@ -12,7 +12,6 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import requests
-import whois
 from bs4 import BeautifulSoup
 from flask import current_app
 from requests import Response
@@ -174,8 +173,74 @@ def _build_explanations(reasons: list[str]) -> list[dict[str, str]]:
     return [{"code": _reason_code(reason), "message": reason} for reason in reasons]
 
 
+def _crawl_page(url: str, base_domain: str, session: requests.Session, timeout: int, crawled: set[str]) -> tuple[str, list[str]]:
+    """Crawl a single page and return its text content and reasons."""
+    reasons: list[str] = []
+    try:
+        resp = session.get(url, timeout=timeout, headers={"User-Agent": "Detector/1.0"})
+        if resp.status_code != 200 or not resp.text:
+            return "", reasons
+        return resp.text, reasons
+    except Exception:
+        return "", reasons
+
+
+def crawl_website(base_url: str, max_pages: int = 5, timeout: int = 5) -> tuple[str, list[str]]:
+    """Crawl multiple pages within the same domain to gather comprehensive content."""
+    session = _build_session()
+    parsed_base = urlparse(base_url)
+    base_domain = parsed_base.hostname or ""
+    base_path = parsed_base.path.rstrip("/") or "/"
+    to_visit = [base_url]
+    visited: set[str] = set()
+    all_text_parts: list[str] = []
+    all_reasons: list[str] = []
+    same_domain_links = 0
+    external_links = 0
+    suspicious_links = 0
+
+    while to_visit and len(visited) < max_pages:
+        current_url = to_visit.pop(0)
+        if current_url in visited:
+            continue
+        visited.add(current_url)
+
+        try:
+            page_text, _reasons = _crawl_page(current_url, base_domain, session, timeout, visited)
+            if not page_text:
+                continue
+            all_text_parts.append(page_text)
+
+            soup = BeautifulSoup(page_text, "html.parser")
+            for a_tag in soup.find_all("a", href=True):
+                href = a_tag["href"].strip()
+                if not href or href.startswith("#") or href.startswith("javascript:"):
+                    continue
+                full_url = urljoin(current_url, href)
+                parsed_link = urlparse(full_url)
+                if parsed_link.hostname == base_domain and full_url not in visited:
+                    if full_url not in to_visit and len(visited) + len(to_visit) < max_pages:
+                        to_visit.append(full_url)
+                    same_domain_links += 1
+                elif parsed_link.hostname and parsed_link.hostname != base_domain:
+                    external_links += 1
+                    suspicious_keywords = ["login", "verify", "account", "update", "confirm"]
+                    if any(kw in href.lower() for kw in suspicious_keywords):
+                        suspicious_links += 1
+        except Exception:
+            continue
+
+    if same_domain_links > 0:
+        all_reasons.append(f"Website has {same_domain_links} internal page(s) linked")
+    if external_links > 5:
+        all_reasons.append(f"Website links to {external_links} external domains")
+    if suspicious_links > 0:
+        all_reasons.append(f"Found {suspicious_links} suspicious external link(s)")
+
+    return "\n\n".join(all_text_parts), all_reasons
+
+
 def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[str, float], list[str]]:
-    """Perform deep content inspection using BeautifulSoup."""
     signals = {
         "has_password_field": 0.0,
         "external_form_action": 0.0,
@@ -187,6 +252,13 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
         "no_privacy_policy_link": 1.0,
         "copyright_year_outdated": 0.0,
         "too_many_ads": 0.0,
+        "mailto_links": 0.0,
+        "tel_links": 0.0,
+        "suspicious_external_links": 0.0,
+        "login_form_detected": 0.0,
+        "ssl_cert_issues": 0.0,
+        "meta_tags_missing": 0.0,
+        "hidden_elements": 0.0,
     }
     reasons: list[str] = []
 
@@ -195,30 +267,26 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Check for password fields
     password_fields = soup.find_all("input", type="password")
     if password_fields:
         signals["has_password_field"] = float(len(password_fields))
         reasons.append(f"Page contains {len(password_fields)} password field(s)")
 
-    # Check forms with external actions
     for form in soup.find_all("form"):
         action = form.get("action", "")
-        if action and (action.startswith("http://") or action.startswith("https://")):
+        if action:
             parsed_action = urlparse(action)
             parsed_final = urlparse(final_url)
-            if parsed_action.netloc != parsed_final.netloc:
+            if parsed_action.netloc and parsed_action.netloc != parsed_final.netloc:
                 signals["external_form_action"] = 1.0
                 reasons.append("Form submits to external domain")
                 break
 
-    # Check iframes
     iframes = soup.find_all("iframe")
     if iframes:
         signals["iframe_count"] = float(len(iframes))
         reasons.append(f"Page contains {len(iframes)} iframe(s)")
 
-    # Check external scripts
     script_srcs = soup.find_all("script", src=True)
     external_scripts = 0
     ad_domains = 0
@@ -230,7 +298,6 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
             parsed_final = urlparse(final_url)
             if parsed_src.netloc != parsed_final.netloc:
                 external_scripts += 1
-                # Check for ad-related domains
                 if any(kw in parsed_src.netloc.lower() for kw in ad_keywords):
                     ad_domains += 1
     if external_scripts:
@@ -240,12 +307,10 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
         signals["too_many_ads"] = 1.0
         reasons.append("Page loads scripts from multiple ad networks")
 
-    # Check for favicon
     favicon = soup.find("link", rel=lambda x: x and "icon" in x.lower())
     if favicon:
         signals["missing_favicon"] = 0.0
 
-    # Check for contact info
     text = soup.get_text(" ", strip=True).lower()
     contact_keywords = ["contact", "email", "phone", "address", "support", "help"]
     if not any(kw in text for kw in contact_keywords):
@@ -254,7 +319,6 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
     else:
         signals["no_contact_info"] = 0.0
 
-    # Check for privacy policy link
     privacy_links = soup.find_all("a", href=True)
     has_privacy = any("privacy" in link.get("href", "").lower() or "privacy" in link.get_text().lower() for link in privacy_links)
     if not has_privacy:
@@ -263,7 +327,6 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
     else:
         signals["no_privacy_policy_link"] = 0.0
 
-    # Check copyright year
     current_year = datetime.now().year
     copyright_matches = re.findall(r"©|copyright|\(c\)\s*(\d{4})", text, re.IGNORECASE)
     if copyright_matches:
@@ -275,6 +338,34 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
                 reasons.append(f"Copyright year outdated ({max_year})")
         except ValueError:
             pass
+
+    mailto_links = soup.find_all("a", href=lambda x: x and x.startswith("mailto:"))
+    if mailto_links:
+        signals["mailto_links"] = float(len(mailto_links))
+
+    tel_links = soup.find_all("a", href=lambda x: x and x.startswith("tel:"))
+    if tel_links:
+        signals["tel_links"] = float(len(tel_links))
+
+    login_forms = soup.find_all("form")
+    login_form_count = 0
+    for form in login_forms:
+        if form.find("input", type="password") or form.find("input", {"name": re.compile(r"(login|username|email)", re.I)}):
+            login_form_count += 1
+    if login_form_count:
+        signals["login_form_detected"] = float(login_form_count)
+        reasons.append(f"Page contains {login_form_count} login form(s)")
+
+    hidden_inputs = soup.find_all("input", type="hidden")
+    if len(hidden_inputs) > 5:
+        signals["hidden_elements"] = 1.0
+        reasons.append(f"Page contains {len(hidden_inputs)} hidden input fields")
+
+    meta_description = soup.find("meta", attrs={"name": "description"})
+    meta_keywords = soup.find("meta", attrs={"name": "keywords"})
+    if not meta_description or not meta_keywords:
+        signals["meta_tags_missing"] = 1.0
+        reasons.append("Missing important meta tags (description/keywords)")
 
     return signals, reasons
 
@@ -434,6 +525,7 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
         domain,
         new_domain_days=config.get("NEW_DOMAIN_DAYS", 7),
         young_domain_days=config.get("YOUNG_DOMAIN_DAYS", 30),
+        whois_api_key=config.get("WHOIS_API_KEY", ""),
     )
     features["domain_age_days"] = float(domain_info.get("domain_age_days", 0))
     features["whois_unavailable"] = 1.0 if domain_info.get("domain_age_days", 0) == 0 and "WHOIS lookup unavailable" in domain_reasons else 0.0
@@ -442,10 +534,18 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
     # Score the analysis
     risk_score, label = score_analysis(features, page_signals, reasons, config)
 
-    # Build features_summary
-    page_text = ""
+    # Crawl additional pages within the same domain
+    all_page_texts: list[str] = []
+    crawled_text = ""
     if response is not None and hasattr(response, "text") and response.text:
-        page_text = response.text
+        all_page_texts.append(response.text)
+    if status_code == 200:
+        crawl_text, crawl_reasons = crawl_website(normalized, max_pages=5, timeout=min(timeout, 5))
+        if crawl_text:
+            all_page_texts.append(crawl_text)
+        reasons.extend(crawl_reasons)
+
+    page_text = "\n\n".join(all_page_texts) if all_page_texts else ""
 
     features_summary = {
         "url_features": {k: v for k, v in features.items() if k != "path_length"},

@@ -219,7 +219,8 @@ function setupFeedback() {
   if (!form) return;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const formData = new FormData(form);
+    const submitter = event.submitter;
+    const formData = new FormData(form, submitter);
     const data = {};
     formData.forEach((value, key) => { data[key] = value; });
     try {
@@ -228,10 +229,12 @@ function setupFeedback() {
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
         body: JSON.stringify(data),
       });
-      if (response.ok) form.innerHTML = '<p class="helper">Feedback recorded \u2014 thank you!</p>';
+      if (response.ok) form.innerHTML = '<p class="helper">Feedback recorded — thank you!</p>';
     } catch (e) {
       console.warn('Feedback submission failed:', e.message);
     }
+  });
+}
   });
 }
 

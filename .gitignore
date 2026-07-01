@@ -1,8 +1,10 @@
 __pycache__/
 *.pyc
 .env
+venv/
 .venv/
 instance/
+results/
 .pytest_cache/
 .coverage
 htmlcov/
@@ -11,4 +13,5 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+*.db
 

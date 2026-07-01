@@ -12,7 +12,7 @@ from flask import (
     send_from_directory,
 )
 
-from app.extensions import db, limiter
+from app.extensions import db, limiter, csrf
 from app.forms import URLForm
 from app.models import Analysis
 from .heuristics import AnalysisInputError
@@ -27,6 +27,7 @@ def index():
 
 
 @bp.route("/api/analyze", methods=["POST"])
+@csrf.exempt
 @limiter.limit(lambda: current_app.config["ANALYZE_RATE_LIMIT"])
 def api_analyze():
     payload = request.get_json(silent=True) or {}
@@ -40,6 +41,7 @@ def api_analyze():
 
 
 @bp.route("/api/feedback", methods=["POST"])
+@csrf.exempt
 def api_feedback():
     payload = request.get_json(silent=True) or {}
     analysis_id = payload.get("analysis_id")
@@ -90,6 +92,24 @@ def api_report(analysis_id):
         except (json.JSONDecodeError, OSError):
             pass
     return jsonify(data)
+
+
+@bp.route("/api/report/<int:analysis_id>/delete", methods=["POST"])
+@csrf.exempt
+def api_report_delete(analysis_id):
+    analysis = db.session.get(Analysis, analysis_id)
+    if not analysis:
+        return jsonify({"error": "not found"}), 404
+    results_dir = Path(current_app.config.get("RESULTS_DIR", "results"))
+    json_path = results_dir / f"{analysis_id}.json"
+    if json_path.exists():
+        try:
+            json_path.unlink()
+        except OSError:
+            pass
+    db.session.delete(analysis)
+    db.session.commit()
+    return jsonify({"status": "deleted"})
 
 
 @bp.route("/offline")

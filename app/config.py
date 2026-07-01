@@ -31,6 +31,7 @@ class BaseConfig:
     NEW_DOMAIN_PENALTY = 20
     YOUNG_DOMAIN_PENALTY = 10
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+    WHOIS_API_KEY = os.getenv("WHOIS_API_KEY", "")
     RESULTS_DIR = os.getenv("RESULTS_DIR", "results")
     CSP = {
         "default-src": "'self'",
