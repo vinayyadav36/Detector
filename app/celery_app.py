@@ -24,6 +24,7 @@ def init_celery(app) -> Celery:
         accept_content=["json"],
         task_always_eager=app.config["CELERY_TASK_ALWAYS_EAGER"],
         task_eager_propagates=app.config["CELERY_TASK_EAGER_PROPAGATES"],
+        task_store_eager_result=app.config["CELERY_TASK_STORE_EAGER_RESULT"],
     )
 
     class ContextTask(celery.Task):

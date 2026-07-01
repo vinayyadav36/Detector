@@ -71,6 +71,7 @@ class BaseConfig:
     # When no Redis, run tasks eagerly in the same process
     CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "true" if not REDIS_URL else "false").lower() == "true"
     CELERY_TASK_EAGER_PROPAGATES = os.getenv("CELERY_TASK_EAGER_PROPAGATES", "true").lower() == "true"
+    CELERY_TASK_STORE_EAGER_RESULT = os.getenv("CELERY_TASK_STORE_EAGER_RESULT", "true").lower() == "true"
     CSP = {
         "default-src": "'self'",
         "script-src": "'self'",

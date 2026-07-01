@@ -7,9 +7,7 @@ from pathlib import Path
 from flask import Flask, g, jsonify, render_template, request
 from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
-from werkzeug.security import generate_password_hash
 
-from .admin import bp as admin_bp
 from .config import CONFIG_MAP, BaseConfig
 from .extensions import (
     configure_redis,
@@ -17,13 +15,12 @@ from .extensions import (
     db,
     error_buffer,
     limiter,
-    login_manager,
     migrate,
     record_error,
     redis_client,
     runtime_state,
 )
-from .models import RequestLog, User, prune_old_data
+from .models import Analysis, prune_old_data
 from .phishing import bp as phishing_bp
 from .security import configure_logging, configure_security
 
@@ -40,33 +37,15 @@ def create_app(config_class: type[BaseConfig] | None = None):
     db.init_app(app)
     csrf.init_app(app)
     limiter.init_app(app)
-    login_manager.init_app(app)
     migrate.init_app(app, db)
     configure_redis(app.config["REDIS_URL"])
     configure_logging(app)
     configure_security(app)
 
-    login_manager.login_view = "admin.login"
-    login_manager.login_message_category = "warning"
-
-    @login_manager.user_loader
-    def load_user(user_id: str):
-        return db.session.get(User, int(user_id))
-
     app.register_blueprint(phishing_bp)
-    app.register_blueprint(admin_bp)
-
-    # Initialise Celery with this app so tasks share the same context
-    from .celery_app import init_celery
-    init_celery(app)
 
     with app.app_context():
         _validate_runtime_config(app)
-        try:
-            if inspect(db.engine).has_table("users"):
-                _sync_admin_user(app)
-        except SQLAlchemyError:
-            app.logger.debug("admin_user_sync_skipped", exc_info=True)
         runtime_state.model_loaded = bool(app.config["MODEL_PATH"])
 
     @app.context_processor
@@ -154,13 +133,6 @@ def create_app(config_class: type[BaseConfig] | None = None):
     return app
 
 
-def _sync_admin_user(app: Flask) -> None:
-    password_hash = app.config["ADMIN_PASSWORD_HASH"] or generate_password_hash(
-        app.config["ADMIN_PASSWORD"] or "change-me-now"
-    )
-    User.sync_admin_user(app.config["ADMIN_USERNAME"], password_hash)
-
-
 def _validate_runtime_config(app: Flask) -> None:
     """Warn if no admin password or SECRET_KEY is configured; never crash in dev."""
     if not app.config.get("SECRET_KEY"):
@@ -173,20 +145,6 @@ def _validate_runtime_config(app: Flask) -> None:
         )
         import secrets
         app.config["SECRET_KEY"] = secrets.token_urlsafe(32)
-    if not (app.config["ADMIN_PASSWORD_HASH"] or app.config["ADMIN_PASSWORD"]):
-        # Use a safe default in development; warn but don't block startup
-        env = app.config.get("FLASK_ENV", "development")
-        if env == "production":
-            raise RuntimeError(
-                "ADMIN_PASSWORD_HASH or ADMIN_PASSWORD must be set in production."
-            )
-        app.logger.warning(
-            "No ADMIN_PASSWORD or ADMIN_PASSWORD_HASH set. "
-            "Admin will use default password 'change-me-now'. "
-            "Set ADMIN_PASSWORD in your .env for real security."
-        )
-        # Inject a default so _sync_admin_user works without crashing
-        app.config["ADMIN_PASSWORD"] = "change-me-now"
 
 
 def gather_health_snapshot() -> dict:
