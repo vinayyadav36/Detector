@@ -3,13 +3,12 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import socket
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
-import requests
+import whois
 
 SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "ow.ly"}
 SUSPICIOUS_KEYWORDS = {
@@ -24,9 +23,6 @@ TOP_BRANDS = {
     "whatsapp", "youtube", "adobe", "dropbox", "salesforce",
     "chase", "bankofamerica", "wellsfargo", "citi", "yahoo"
 }
-
-_whois_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="whois")
-_WHOIS_TIMEOUT = 10.0
 
 
 class AnalysisInputError(ValueError):
@@ -186,25 +182,6 @@ def extract_url_features(url: str) -> tuple[dict[str, float], list[str]]:
     return features, reasons
 
 
-def _whoisxml_lookup(host: str, api_key: str) -> dict[str, Any] | None:
-    """Query WhoisXML API for domain intelligence."""
-    url = "https://www.whoisxmlapi.com/whoisserver/WhoisService"
-    params = {
-        "apiKey": api_key,
-        "domainName": host,
-        "outputFormat": "JSON",
-        "preferFresh": "1",
-    }
-    try:
-        response = requests.get(url, params=params, timeout=_WHOIS_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
-        whois_record = data.get("WhoisRecord", {})
-        return whois_record
-    except Exception:
-        return None
-
-
 def get_domain_intelligence(
     host: str,
     *,
@@ -212,40 +189,67 @@ def get_domain_intelligence(
     young_domain_days: int,
     whois_api_key: str = "",
 ) -> tuple[dict[str, Any], list[str]]:
-    info: dict[str, Any] = {"domain": host, "domain_age_days": 0, "registrar": "unknown"}
+    info: dict[str, Any] = {
+        "domain": host,
+        "domain_age_days": 0,
+        "registrar": "unknown",
+        "creation_date": None,
+        "expiration_date": None,
+        "name_servers": [],
+    }
     reasons: list[str] = []
 
-    if whois_api_key:
-        whois_data = _whoisxml_lookup(host, whois_api_key)
-        if whois_data:
-            creation_date_str = whois_data.get("createdDate") or whois_data.get("registryData", {}).get("createdDate")
-            if creation_date_str:
+    try:
+        w = whois.whois(host)
+
+        creation = w.creation_date
+        if isinstance(creation, list):
+            creation = creation[0]
+
+        if creation:
+            if isinstance(creation, str):
+                creation = datetime.fromisoformat(creation)
+            creation_utc = (
+                creation.astimezone(timezone.utc)
+                if creation.tzinfo
+                else creation.replace(tzinfo=timezone.utc)
+            )
+            age_days = max((datetime.now(timezone.utc) - creation_utc).days, 0)
+            info["domain_age_days"] = age_days
+            info["creation_date"] = creation_utc.strftime("%Y-%m-%d")
+
+            if age_days < new_domain_days:
+                reasons.append(f"Domain registered less than {new_domain_days} days ago")
+            elif age_days < young_domain_days:
+                reasons.append(f"Domain registered less than {young_domain_days} days ago")
+
+        if w.registrar:
+            info["registrar"] = str(w.registrar)
+
+        expiry = w.expiration_date
+        if isinstance(expiry, list):
+            expiry = expiry[0]
+        if expiry:
+            if isinstance(expiry, str):
                 try:
-                    creation = datetime.fromisoformat(creation_date_str.replace("Z", "+00:00"))
-                    creation_utc = creation.astimezone(timezone.utc) if creation.tzinfo else creation.replace(tzinfo=timezone.utc)
-                    age_days = max((datetime.now(timezone.utc) - creation_utc).days, 0)
-                    info["domain_age_days"] = age_days
-                    if age_days < new_domain_days:
-                        reasons.append(f"Domain registered less than {new_domain_days} days ago")
-                    elif age_days < young_domain_days:
-                        reasons.append(f"Domain registered less than {young_domain_days} days ago")
-                except Exception:
+                    expiry = datetime.fromisoformat(expiry)
+                except ValueError:
                     pass
+            if hasattr(expiry, "strftime"):
+                expiry_utc = (
+                    expiry.astimezone(timezone.utc)
+                    if expiry.tzinfo
+                    else expiry.replace(tzinfo=timezone.utc)
+                )
+                info["expiration_date"] = expiry_utc.strftime("%Y-%m-%d")
+            else:
+                info["expiration_date"] = str(expiry)
 
-            registrar = whois_data.get("registrarName") or whois_data.get("registryData", {}).get("registrarName")
-            if registrar:
-                info["registrar"] = str(registrar)
+        ns = w.name_servers
+        if ns:
+            info["name_servers"] = [str(n).lower() for n in ns]
 
-            expires_date_str = whois_data.get("expiresDate") or whois_data.get("registryData", {}).get("expiresDate")
-            if expires_date_str:
-                info["expires_date"] = expires_date_str
-
-            name_servers = whois_data.get("nameServers", {}).get("hostNames", [])
-            if name_servers:
-                info["name_servers"] = name_servers
-        else:
-            reasons.append("WHOIS lookup unavailable (API)")
-    else:
-        reasons.append("WHOIS lookup skipped (no API key)")
+    except Exception:
+        reasons.append("WHOIS lookup unavailable (no data returned)")
 
     return info, reasons

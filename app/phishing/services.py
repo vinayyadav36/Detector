@@ -81,7 +81,45 @@ def _build_session() -> requests.Session:
     adapter = requests.adapters.HTTPAdapter(max_retries=retry)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+    })
     return session
+
+
+def _is_bot_blocked(text: str) -> bool:
+    """Detect if the response is a bot-detection page (reCAPTCHA, Cloudflare, etc.)."""
+    if not text:
+        return False
+    lower = text.lower()
+    # Check for strong bot-detection signals
+    strong_indicators = [
+        "recaptcha",
+        "please verify you are human",
+        "please verify you are not a robot",
+        "checking your browser",
+        "just a moment",
+        "verify you are not a robot",
+        "cf-browser-verification",
+        "captcha-container",
+        "g-recaptcha",
+    ]
+    if any(indicator in lower for indicator in strong_indicators):
+        return True
+    # Check for meta refresh bot detection (Amazon-style)
+    if 'meta http-equiv="refresh"' in lower and "bm-verify" in lower:
+        return True
+    return False
 
 
 def fetch_page(url: str, timeout: int, max_redirect_depth: int, retry_count: int) -> PageFetchResult:
@@ -100,7 +138,6 @@ def fetch_page(url: str, timeout: int, max_redirect_depth: int, retry_count: int
                     current_url,
                     timeout=timeout,
                     allow_redirects=False,
-                    headers={"User-Agent": "Detector/1.0"},
                 )
                 if response.is_redirect or response.is_permanent_redirect:
                     location = response.headers.get("Location")
@@ -137,6 +174,9 @@ def fetch_page(url: str, timeout: int, max_redirect_depth: int, retry_count: int
             if response.status_code >= 400:
                 reachability = "partially_reachable"
                 reasons.append(f"Page returned HTTP {response.status_code}")
+            if _is_bot_blocked(response.text or ""):
+                reachability = "partially_reachable"
+                reasons.append("Page returned bot-detection challenge (reCAPTCHA/Cloudflare)")
             return PageFetchResult(response, response.url, redirect_chain, reasons, reachability)
         except ReachabilityError:
             raise
@@ -419,34 +459,51 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
     if features.get("whois_unavailable", 0):
         score += 5
 
-    # Page-level signals
-    if page_signals.get("has_password_field", 0) and not features.get("uses_https", 1):
-        score += 15
-    if page_signals.get("external_form_action", 0):
-        score += 12
-    iframe_count = int(page_signals.get("iframe_count", 0))
-    score += min(iframe_count * 5, 15)
-    external_script_count = int(page_signals.get("external_script_count", 0))
-    score += min(external_script_count * 3, 9)
-    redirect_count = int(page_signals.get("redirect_count", 0))
-    if redirect_count > 1:
-        score += min((redirect_count - 1) * 3, 12)
-    if page_signals.get("http_error_status", 0):
-        score += 8
-    if page_signals.get("missing_favicon", 1):
-        score += 4
-    if page_signals.get("no_contact_info", 1):
+    # Page-level signals - only apply if page was successfully fetched and not bot-blocked
+    page_fetched = not page_signals.get("page_unreachable", 0)
+    bot_blocked = page_signals.get("bot_detection", 0)
+
+    if page_fetched and not bot_blocked:
+        if page_signals.get("has_password_field", 0) and not features.get("uses_https", 1):
+            score += 15
+        if page_signals.get("external_form_action", 0):
+            score += 12
+        iframe_count = int(page_signals.get("iframe_count", 0))
+        score += min(iframe_count * 5, 15)
+        external_script_count = int(page_signals.get("external_script_count", 0))
+        score += min(external_script_count * 3, 9)
+        redirect_count = int(page_signals.get("redirect_count", 0))
+        if redirect_count > 1:
+            score += min((redirect_count - 1) * 3, 12)
+        if page_signals.get("http_error_status", 0):
+            score += 8
+        if page_signals.get("missing_favicon", 1):
+            score += 4
+        if page_signals.get("no_contact_info", 1):
+            score += 5
+        if page_signals.get("no_privacy_policy_link", 1):
+            score += 4
+        if page_signals.get("copyright_year_outdated", 0):
+            score += 6
+        if page_signals.get("too_many_ads", 0):
+            score += 8
+        if page_signals.get("content_domain_mismatch", 0):
+            score += 20
+
+    # Bot detection handling
+    if bot_blocked:
+        # Bot detection means the site is live but blocking scrapers
+        # This is common for legitimate sites - small penalty only
         score += 5
-    if page_signals.get("no_privacy_policy_link", 1):
-        score += 4
-    if page_signals.get("copyright_year_outdated", 0):
-        score += 6
-    if page_signals.get("too_many_ads", 0):
-        score += 8
-    if page_signals.get("content_domain_mismatch", 0):
-        score += 20
-    if page_signals.get("page_unreachable", 0):
-        score += 30
+
+    # Page unreachable handling - contextual penalty (only if NOT bot-blocked)
+    elif page_signals.get("page_unreachable", 0):
+        if domain_age > config.get("YOUNG_DOMAIN_DAYS", 30):
+            # Old domain but unreachable - could be temporarily down, mild penalty
+            score += 10
+        else:
+            # Young/unverified domain that's unreachable - more suspicious
+            score += 20
 
     score = max(0, min(score, 100))
 
@@ -502,6 +559,7 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
         "copyright_year_outdated": 0.0,
         "too_many_ads": 0.0,
         "page_unreachable": 0.0,
+        "bot_detection": 0.0,
     }
 
     # Fetch page and do deep content inspection
@@ -534,18 +592,28 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
             if status_code and status_code >= 400:
                 page_signals["http_error_status"] = 1.0
 
-            # Deep content inspection
-            content_signals, content_reasons = deep_content_inspection(response, response.url)
-            page_signals.update(content_signals)
-            reasons.extend(content_reasons)
+            # Detect bot-detection pages (reCAPTCHA, Cloudflare challenge)
+            bot_blocked = _is_bot_blocked(response.text or "")
+            if bot_blocked:
+                page_signals["bot_detection"] = 1.0
+                # Don't run deep content inspection on bot-blocked pages
+                # as the content is just the challenge page, not real site content
+            else:
+                # Deep content inspection
+                content_signals, content_reasons = deep_content_inspection(response, response.url)
+                page_signals.update(content_signals)
+                reasons.extend(content_reasons)
 
             try:
                 bs_duration = time.perf_counter() - bs_start_time
                 current_app.logger.info(f"[SUCCESS] BeautifulSoup parsing completed in {bs_duration:.4f}s.")
-                form_count = int(content_signals.get("has_password_field", 0))
-                iframe_count = int(content_signals.get("iframe_count", 0))
-                script_count = int(content_signals.get("external_script_count", 0))
-                current_app.logger.info(f"[SCRAPER AUDIT DATA] Found issues related to: {form_count} password fields, {iframe_count} iframes, {script_count} scripts.")
+                form_count = int(page_signals.get("has_password_field", 0))
+                iframe_count = int(page_signals.get("iframe_count", 0))
+                script_count = int(page_signals.get("external_script_count", 0))
+                if bot_blocked:
+                    current_app.logger.info("[SCRAPER AUDIT DATA] Bot-detection page detected (reCAPTCHA/Cloudflare). Skipping content analysis.")
+                else:
+                    current_app.logger.info(f"[SCRAPER AUDIT DATA] Found issues related to: {form_count} password fields, {iframe_count} iframes, {script_count} scripts.")
             except RuntimeError:
                 pass
         else:
@@ -608,6 +676,12 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
         "reachability": reachability,
         "status_code": status_code,
         "domain_age_days": features.get("domain_age_days", 0),
+        "domain_info": {
+            "creation_date": domain_info.get("creation_date"),
+            "expiration_date": domain_info.get("expiration_date"),
+            "registrar": domain_info.get("registrar", "unknown"),
+            "name_servers": domain_info.get("name_servers", []),
+        },
     }
     explanations = _build_explanations(list(dict.fromkeys(reasons)))
 
@@ -635,7 +709,7 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
     try:
         current_app.logger.info("[STEP 3/3] Conditioning Data & Triggering AI Agent...")
         mock_payload = {
-            "model": "gemini-2.5-flash-lite",
+            "model": "gemini (auto-selected)",
             "url_context": result.normalized_url,
             "scraped_text_sample": (page_text[:200].strip().replace('\n', ' ') + "...") if page_text else "None"
         }

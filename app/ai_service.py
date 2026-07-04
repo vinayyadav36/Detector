@@ -8,6 +8,13 @@ from flask import current_app
 
 logger = logging.getLogger(__name__)
 
+GEMINI_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-2.5-flash-preview-05-20",
+    "gemini-2.0-flash-lite",
+]
+
 
 def analyze_with_ai(url: str, page_content: str, features_summary: dict[str, Any]) -> dict[str, Any]:
     api_key = current_app.config.get("GOOGLE_API_KEY", "")
@@ -16,26 +23,35 @@ def analyze_with_ai(url: str, page_content: str, features_summary: dict[str, Any
 
     try:
         from google import genai
-
-        client = genai.Client(api_key=api_key)
-
-        prompt = _build_master_prompt(url, page_content, features_summary)
-
         from google.genai import types
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        client = genai.Client(api_key=api_key)
+        prompt = _build_master_prompt(url, page_content, features_summary)
 
-        if not response.text:
-            return {"available": True, "reasoning": "AI returned no analysis text."}
+        last_error = None
+        for model in GEMINI_MODELS:
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
+                )
 
-        return _parse_ai_response(response.text)
+                if not response.text:
+                    return {"available": True, "reasoning": "AI returned no analysis text."}
 
+                return _parse_ai_response(response.text)
+            except Exception as model_exc:
+                last_error = model_exc
+                logger.debug("Model %s failed: %s", model, model_exc)
+                continue
+
+        return {"available": False, "message": f"AI analysis error: {last_error}"}
+
+    except ImportError:
+        return {"available": False, "message": "AI analysis unavailable: google-genai package not installed"}
     except Exception as exc:
         logger.warning("AI analysis failed for %s: %s", url, exc)
         return {"available": False, "message": f"AI analysis error: {exc}"}

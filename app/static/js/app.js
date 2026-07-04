@@ -235,8 +235,6 @@ function setupFeedback() {
     }
   });
 }
-  });
-}
 
 function setupOfflineView() {
   const offlineResults = document.getElementById('offline-results');
@@ -253,6 +251,28 @@ function setupOfflineView() {
   if (retryButton) retryButton.addEventListener('click', () => window.location.assign('/'));
 }
 
+function setupDeleteReport() {
+  const deleteBtn = document.getElementById('delete-report');
+  if (!deleteBtn) return;
+  deleteBtn.addEventListener('click', async function() {
+    if (!confirm('Are you sure you want to delete this report?')) return;
+    const analysisId = this.dataset.analysisId;
+    try {
+      const response = await fetch('/api/report/' + analysisId + '/delete', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCsrfToken() }
+      });
+      if (response.ok) {
+        window.location.href = '/';
+      } else {
+        alert('Failed to delete report.');
+      }
+    } catch (e) {
+      alert('Error deleting report.');
+    }
+  });
+}
+
 window.addEventListener('online', () => {
   const node = document.getElementById('network-status');
   if (node) node.textContent = 'Online';
@@ -267,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupThemeToggle();
   setupAnalyzeForm();
   setupFeedback();
+  setupDeleteReport();
   setupInstallPrompt();
   setupOfflineView();
   registerServiceWorker();
