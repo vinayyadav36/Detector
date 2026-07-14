@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
+import re
 import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,7 +23,15 @@ TOP_BRANDS = {
     "paypal", "netflix", "linkedin", "twitter", "instagram",
     "whatsapp", "youtube", "adobe", "dropbox", "salesforce",
     "chase", "bankofamerica", "wellsfargo", "citi", "yahoo",
-    "tanishq", "tata", "fairplay", "sbiyono", "hdfc"
+    "tanishq", "tata", "fairplay", "sbiyono", "hdfc",
+    "icici", "axis", "kotak", "yesbank", "paytm",
+    "phonepe", "gpay", "amazonpay", "mobikwik", "freecharge",
+    "flipkart", "myntra", "ajio", "meesho", "nykaa",
+    "swiggy", "zomato", "ola", "uber", "rapido",
+    "byju", "unacademy", "coursera", "udemy",
+    "github", "bitbucket", "gitlab",
+    "stripe", "square", "venmo", "zelle",
+    "dhl", "fedex", "ups", "usps", "bluedart",
 }
 
 
@@ -119,6 +128,38 @@ def validate_redirect_target(current_url: str, location: str) -> tuple[bool, str
     return ok, message, next_url
 
 
+def _check_brand_in_domain(host_no_tld: str, host: str) -> tuple[float, list[str], list[str]]:
+    """Check for brand impersonation using token matching, appended digits, appended words.
+    Returns (impersonation_score, brand_hits, brand_reasons)."""
+    hits: list[str] = []
+    reasons: list[str] = []
+    score = 0.0
+
+    for brand in TOP_BRANDS:
+        if brand in host_no_tld and host_no_tld != brand:
+            hits.append(brand)
+
+            appended = host_no_tld.replace(brand, "", 1)
+            has_digits = bool(re.search(r"\d", appended))
+            has_appended_words = len(appended) > 0 and not has_digits
+
+            reasons.append(
+                f"Domain contains known brand token '{brand}' "
+                f"({'with appended digits' if has_digits else 'with appended text' if has_appended_words else 'embedded'})"
+            )
+            score = 1.0
+
+    for brand in TOP_BRANDS:
+        for part in host.split("."):
+            dist = levenshtein_distance(part, brand)
+            if 0 < dist <= 2:
+                reasons.append(f"Domain is close to brand '{brand}' (edit distance {dist})")
+                score = max(score, 1.0)
+                break
+
+    return score, hits, reasons
+
+
 def extract_url_features(url: str) -> tuple[dict[str, float], list[str]]:
     parsed = urlparse(url)
     host = parsed.hostname or ""
@@ -157,33 +198,26 @@ def extract_url_features(url: str) -> tuple[dict[str, float], list[str]]:
     if len(url) > 75:
         reasons.append(f"URL length is unusually long ({len(url)} chars)")
 
-    is_typosquatting = 0.0
-    brand_impersonation = 0.0
-    brand_hits = []
     host_no_tld = host.split(".")[0].lower() if "." in host else host.lower()
+    brand_impersonation, brand_hits, brand_reasons = _check_brand_in_domain(host_no_tld, host)
+    reasons.extend(brand_reasons)
 
+    is_typosquatting = 0.0
     for brand in TOP_BRANDS:
-        # Check direct brand inclusion (e.g. tatabook, tanishq777)
-        if brand in host_no_tld:
-            # If the brand is inside the host, it's highly likely impersonation if not the exact brand domain
-            if host_no_tld != brand:
-                brand_impersonation = 1.0
-                brand_hits.append(brand)
-                reasons.append(f"Domain contains known brand token '{brand}' with appended words or digits")
-
-        # Typosquatting (distance)
         for part in host.split('.'):
             dist = levenshtein_distance(part, brand)
             if 0 < dist <= 2:
                 is_typosquatting = 1.0
-                reasons.append(f"Domain appears to be typosquatting a known brand ({brand})")
                 break
+        if is_typosquatting:
+            break
 
     features = {
         "url_length": float(len(url)),
         "is_typosquatting": is_typosquatting,
         "brand_impersonation": brand_impersonation,
         "brand_hits": brand_hits,
+        "raw_domain": host,
         "subdomain_count": float(subdomain_count),
         "has_ip": has_ip,
         "suspicious_chars": float(suspicious_char_count),
@@ -230,7 +264,6 @@ def get_domain_intelligence(
             info["domain_age_days"] = age_days
             info["creation_date"] = creation_utc.strftime("%Y-%m-%d")
 
-            # Use fixed domain age buckets from config (defaults hardcoded here for fallback)
             config = {}
             try:
                 from flask import current_app

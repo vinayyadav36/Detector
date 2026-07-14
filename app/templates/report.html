@@ -63,86 +63,61 @@
     {% if data.features_summary %}
       {% if data.features_summary.url_features and data.features_summary.url_features.brand_impersonation %}
       <div style="margin-top: 1rem; color: var(--danger);">
-        <strong>Warning:</strong> This domain is flagged for brand impersonation.
+        <strong>Brand Impersonation Detected</strong>
+        {% if data.features_summary.brand_token_hits and data.features_summary.brand_token_hits | length > 0 %}
+        <span> — matched tokens: {{ data.features_summary.brand_token_hits | join(', ') }}</span>
+        {% endif %}
       </div>
       {% endif %}
       {% if data.features_summary.page_signals and data.features_summary.page_signals.binary_response %}
       <div style="margin-top: 1rem; color: var(--warning);">
-        <strong>Notice:</strong> The content returned was binary or non-HTML and was skipped by the deep content inspector.
+        <strong>Binary / Non-HTML Response</strong>
+        <span> — the content returned was binary or unreadable. Deep content inspection was skipped.</span>
       </div>
       {% endif %}
     {% endif %}
   </article>
 </section>
 
-{% if data.features_summary and data.features_summary.page_signals and data.features_summary.page_signals.vt_summary and data.features_summary.page_signals.vt_summary.status == 'success' %}
+{% if data.features_summary and data.features_summary.page_signals and data.features_summary.page_signals.vt_summary %}
+{% set vt = data.features_summary.page_signals.vt_summary %}
+{% if vt.status == 'success' %}
 <section class="card">
   <h2>VirusTotal Enrichment</h2>
   <div class="key-value">
-    {% set vt = data.features_summary.page_signals.vt_summary %}
     <div><span>Malicious</span><span class="score-phishing">{{ vt.malicious_count }}</span></div>
     <div><span>Suspicious</span><span class="score-suspicious">{{ vt.suspicious_count }}</span></div>
     <div><span>Harmless / Undetected</span><span class="score-safe">{{ vt.harmless_count }} / {{ vt.undetected_count }}</span></div>
+    {% if vt.total_engines %}
+    <div><span>Engines Scanned</span><span>{{ vt.total_engines }}</span></div>
+    {% endif %}
     {% if vt.permalink %}
     <div><span>Report</span><span><a href="{{ vt.permalink }}" target="_blank" rel="noopener noreferrer">View on VirusTotal</a></span></div>
     {% endif %}
   </div>
 </section>
+{% elif vt.status == 'not_found' %}
+<section class="card">
+  <h2>VirusTotal Enrichment</h2>
+  <p class="muted">This URL has not been previously scanned by VirusTotal.</p>
+</section>
+{% elif vt.status == 'rate_limited' %}
+<section class="card">
+  <h2>VirusTotal Enrichment</h2>
+  <p class="muted">VirusTotal rate limit reached. Try again in a few minutes.</p>
+</section>
+{% elif vt.status == 'error' %}
+<section class="card">
+  <h2>VirusTotal Enrichment</h2>
+  <p class="muted">VirusTotal lookup failed: {{ vt.message or 'unknown error' }}</p>
+</section>
+{% endif %}
 {% endif %}
 
-{% if data.ai_analysis and data.ai_analysis.available %}
+{% if not (data.features_summary and data.features_summary.page_signals and data.features_summary.page_signals.vt_summary) %}
 <section class="card">
-  <h2>Detailed Analysis</h2>
-  {% if data.ai_analysis.summary %}
-  <p><strong>Assessment:</strong> {{ data.ai_analysis.summary }}</p>
-  {% endif %}
-  {% if data.ai_analysis.threat_classification %}
-  <div class="key-value">
-    <div><span>Threat Classification</span><span class="pill pill-{{ 'phishing' if data.ai_analysis.threat_classification in ('phishing', 'malware', 'scam') else 'safe' }}">{{ data.ai_analysis.threat_classification }}</span></div>
-    {% if data.ai_analysis.risk_score %}
-    <div><span>Deep Risk Score</span><span>{{ data.ai_analysis.risk_score }}/100</span></div>
-    {% endif %}
-    {% if data.ai_analysis.confidence %}
-    <div><span>Confidence</span><span>{{ (data.ai_analysis.confidence * 100) | int }}%</span></div>
-    {% endif %}
-  </div>
-  {% endif %}
-  {% if data.ai_analysis.attack_vectors and data.ai_analysis.attack_vectors|length > 0 %}
-  <h3>Attack Vectors</h3>
-  <ul class="bullet-list">
-    {% for vec in data.ai_analysis.attack_vectors %}
-    <li>{{ vec }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if data.ai_analysis.detailed_assessment %}
-  <h3>Forensic Analysis</h3>
-  <div class="log-box">{{ data.ai_analysis.detailed_assessment }}</div>
-  {% endif %}
-  {% if data.ai_analysis.key_indicators and data.ai_analysis.key_indicators|length > 0 %}
-  <h3>Key Indicators</h3>
-  <ul class="bullet-list">
-    {% for indicator in data.ai_analysis.key_indicators %}
-    <li>{{ indicator }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if data.ai_analysis.behavioral_indicators and data.ai_analysis.behavioral_indicators|length > 0 %}
-  <h3>Behavioral Indicators</h3>
-  <ul class="bullet-list">
-    {% for indicator in data.ai_analysis.behavioral_indicators %}
-    <li>{{ indicator }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  {% if data.ai_analysis.recommendations and data.ai_analysis.recommendations|length > 0 %}
-  <h3>Recommendations</h3>
-  <ul class="bullet-list">
-    {% for rec in data.ai_analysis.recommendations %}
-    <li>{{ rec }}</li>
-    {% endfor %}
-  </ul>
-  {% endif %}
+  <h2>VirusTotal Enrichment</h2>
+  <p class="muted">VirusTotal enrichment not enabled. Set VT_ENABLED=true and VT_API_KEY in your .env to activate.</p>
 </section>
 {% endif %}
 

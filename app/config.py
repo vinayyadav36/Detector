@@ -10,6 +10,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
+def compute_label_from_score(score: int, config: dict | None = None) -> str:
+    """Canonical score-to-label mapping. Every layer must use this."""
+    cfg = config or {}
+    phishing_threshold = int(cfg.get("PHISHING_THRESHOLD", 50))
+    suspicious_threshold = int(cfg.get("SUSPICIOUS_THRESHOLD", 25))
+    if score >= phishing_threshold:
+        return "phishing"
+    elif score >= suspicious_threshold:
+        return "suspicious"
+    else:
+        return "safe"
+
+
 class BaseConfig:
     SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/instance/detector.db")
@@ -24,8 +37,7 @@ class BaseConfig:
     REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "10"))
     MAX_REDIRECT_DEPTH = int(os.getenv("MAX_REDIRECT_DEPTH", "5"))
 
-    # Label thresholds: 0-24 safe, 25-49 suspicious, 50+ phishing
-    SAFE_THRESHOLD = int(os.getenv("SAFE_THRESHOLD", "25"))
+    # Label thresholds: score < SUSPICIOUS_THRESHOLD = safe, >= SUSPICIOUS_THRESHOLD = suspicious, >= PHISHING_THRESHOLD = phishing
     SUSPICIOUS_THRESHOLD = int(os.getenv("SUSPICIOUS_THRESHOLD", "25"))
     PHISHING_THRESHOLD = int(os.getenv("PHISHING_THRESHOLD", "50"))
 
@@ -40,12 +52,15 @@ class BaseConfig:
     NEW_DOMAIN_PENALTY = 20
     YOUNG_DOMAIN_PENALTY = 10
 
-    # VirusTotal Integration
+    # VirusTotal Integration (optional enrichment, disabled by default)
     VT_ENABLED = os.getenv("VT_ENABLED", "false").lower() == "true"
     VT_API_KEY = os.getenv("VT_API_KEY", "")
     VT_TIMEOUT = int(os.getenv("VT_TIMEOUT", "10"))
+    VT_SCORE_BUMP_MALICIOUS = int(os.getenv("VT_SCORE_BUMP_MALICIOUS", "15"))
+    VT_SCORE_BUMP_SUSPICIOUS = int(os.getenv("VT_SCORE_BUMP_SUSPICIOUS", "5"))
+    VT_MAX_BUMP_MALICIOUS = int(os.getenv("VT_MAX_BUMP_MALICIOUS", "30"))
+    VT_MAX_BUMP_SUSPICIOUS = int(os.getenv("VT_MAX_BUMP_SUSPICIOUS", "10"))
 
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
     WHOIS_API_KEY = os.getenv("WHOIS_API_KEY", "")
     RESULTS_DIR = os.getenv("RESULTS_DIR", "results")
     CSP = {
