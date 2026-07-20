@@ -5,6 +5,28 @@
 {% block content %}
 <div class="card">
   <h1>Phishing Analysis Report</h1>
+
+{% if data.features_summary and data.features_summary.content_policy and data.features_summary.content_policy.detected %}
+  <table class="card-table" style="border: 2px solid #e74c3c;">
+    <tr>
+      <td class="label" style="color: #e74c3c; font-weight: bold;">CONTENT POLICY VIOLATION</td>
+      <td class="value score-phishing">{{ data.features_summary.content_policy.type | upper }} content detected</td>
+    </tr>
+    <tr>
+      <td class="label">Detected Via</td>
+      <td class="value">{{ data.features_summary.content_policy.source | title }}</td>
+    </tr>
+    <tr>
+      <td class="label">Evidence</td>
+      <td class="value">{{ data.features_summary.content_policy.evidence }}</td>
+    </tr>
+    <tr>
+      <td class="label">Policy Note</td>
+      <td class="value">This content is flagged per regulatory compliance for the Indian market (gambling, betting, and adult content are restricted).</td>
+    </tr>
+  </table>
+{% endif %}
+
   <table class="card-table">
     <tr>
       <td class="label">Target URL</td>

@@ -1,8 +1,3 @@
-"""
-Detector - One-Click Launcher
-Handles venv setup, dependency installation, browser opening, and server startup.
-Works both as a .py script and as a PyInstaller .exe bundle.
-"""
 from __future__ import annotations
 
 import os
@@ -33,18 +28,13 @@ def find_python(project_dir: str) -> str:
 def ensure_venv(project_dir: str) -> str:
     venv_dir = os.path.join(project_dir, "venv")
     venv_python = os.path.join(venv_dir, "Scripts", "python.exe")
-
     if not os.path.isfile(venv_python):
-        print(f"[{APP_NAME}]")
-        print(f"  First-time setup: creating Python environment...")
         subprocess.run(
             [sys.executable, "-m", "venv", venv_dir],
             cwd=project_dir,
             check=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-        print(f"  Python environment created.")
-
     return venv_python
 
 
@@ -52,8 +42,6 @@ def install_deps(python_path: str, project_dir: str) -> None:
     req_file = os.path.join(project_dir, "requirements.txt")
     if not os.path.isfile(req_file):
         return
-
-    print(f"  Checking dependencies...")
     result = subprocess.run(
         [python_path, "-m", "pip", "install", "-r", req_file, "-q"],
         cwd=project_dir,
@@ -61,12 +49,8 @@ def install_deps(python_path: str, project_dir: str) -> None:
         text=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
-    if result.returncode != 0:
-        print(f"  Warning: Some dependencies may not have installed correctly.")
-        if result.stderr:
-            print(f"  {result.stderr[:200]}")
-    else:
-        print(f"  Dependencies OK.")
+    if result.returncode != 0 and result.stderr:
+        pass  # non-critical
 
 
 def ensure_dirs(project_dir: str) -> None:
@@ -81,17 +65,24 @@ def open_browser_delayed() -> None:
     webbrowser.open(APP_URL)
 
 
-def run_server(python_path: str, project_dir: str) -> None:
-    print(f"  Starting server...")
-    print(f"")
-    print(f"  ========================================")
-    print(f"  Open your browser and go to:")
-    print(f"  {APP_URL}")
-    print(f"  ========================================")
-    print(f"")
-    print(f"  Press Ctrl+C to stop the server.")
-    print(f"")
+def _run_flask_standalone(basedir: str) -> None:
+    os.chdir(basedir)
+    ensure_dirs(basedir)
+    env_path = os.path.join(basedir, ".env")
+    if not os.path.isfile(env_path) and getattr(sys, "frozen", False):
+        import shutil
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            src = os.path.join(meipass, ".env")
+            if os.path.isfile(src):
+                shutil.copy2(src, env_path)
+    threading.Thread(target=open_browser_delayed, daemon=True).start()
+    from app import create_app
+    application = create_app()
+    application.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
+
+def run_server(python_path: str, project_dir: str) -> None:
     subprocess.run(
         [python_path, "run.py"],
         cwd=project_dir,
@@ -100,30 +91,22 @@ def run_server(python_path: str, project_dir: str) -> None:
 
 
 def main() -> None:
+    if getattr(sys, "frozen", False):
+        _run_flask_standalone(get_project_dir())
+        return
+
     project_dir = get_project_dir()
     os.chdir(project_dir)
-
-    print(f"")
-    print(f"  ========================================")
-    print(f"    {APP_NAME}")
-    print(f"  ========================================")
-    print(f"")
-
     python_path = ensure_venv(project_dir)
     install_deps(python_path, project_dir)
     ensure_dirs(project_dir)
-
-    print(f"  Launching browser...")
-    browser_thread = threading.Thread(target=open_browser_delayed, daemon=True)
-    browser_thread.start()
-
+    threading.Thread(target=open_browser_delayed, daemon=True).start()
     try:
         run_server(python_path, project_dir)
     except KeyboardInterrupt:
-        print(f"\n  Server stopped.")
+        pass
     except Exception as e:
-        print(f"\n  Error: {e}")
-        input("\n  Press Enter to exit...")
+        input(f"\n  Error: {e}\n  Press Enter to exit...")
 
 
 if __name__ == "__main__":

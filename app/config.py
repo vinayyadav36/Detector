@@ -76,6 +76,15 @@ class BaseConfig:
     URLSCAN_MAX_BUMP = int(os.getenv("URLSCAN_MAX_BUMP", "20"))
     ABUSEIPDB_API_KEY = os.getenv("ABUSEIPDB_API_KEY", "")
 
+    # Content Policy (India regulatory compliance: gambling/adult flagged as suspicious)
+    CONTENT_POLICY_ENABLED = os.getenv("CONTENT_POLICY_ENABLED", "true").lower() == "true"
+    CONTENT_POLICY_SCORE_BUMP = int(os.getenv("CONTENT_POLICY_SCORE_BUMP", "25"))
+    CONTENT_POLICY_FLOOR = int(os.getenv("CONTENT_POLICY_FLOOR", "25"))
+
+    # Unknown Domain Suspicion (no brand + no external corroboration → suspicious baseline)
+    UNKNOWN_DOMAIN_SUSPICIOUS_FLOOR = int(os.getenv("UNKNOWN_DOMAIN_SUSPICIOUS_FLOOR", "25"))
+    UNKNOWN_DOMAIN_MIN_SOURCES = int(os.getenv("UNKNOWN_DOMAIN_MIN_SOURCES", "2"))
+
     WHOIS_API_KEY = os.getenv("WHOIS_API_KEY", "")
     RESULTS_DIR = os.getenv("RESULTS_DIR", "results")
     CSP = {

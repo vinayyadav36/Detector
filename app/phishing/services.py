@@ -24,6 +24,8 @@ from app.models import Analysis
 from .heuristics import (
     AnalysisInputError,
     ReachabilityError,
+    detect_content_policy,
+    check_vt_categories_for_content_policy,
     extract_url_features,
     get_domain_intelligence,
     normalize_url,
@@ -913,52 +915,97 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
             vt_signal = "clean"
 
 
-    # 4. POSITIVE TRUST OFFSET
-    if vt_summary and vt_summary.get("status") == "success":
-        url_report = vt_summary.get("url_report", {})
-        stats = url_report.get("stats", {})
-        malicious = stats.get("malicious_count", url_report.get("malicious_count", 0))
+    # Pre-compute thresholds (needed by content policy and unknown domain floors)
+    phishing_threshold = config.get("PHISHING_THRESHOLD", 50)
+    suspicious_threshold = config.get("SUSPICIOUS_THRESHOLD", 25)
 
-        # We can subtract if clean history exists
-        dates = url_report.get("dates", {})
-        first_sub = dates.get("first_submission_date")
-        if first_sub and malicious == 0:
-            from datetime import datetime, timezone
-            try:
-                first_sub_dt = datetime.fromisoformat(first_sub)
-                age_days = (datetime.now(timezone.utc) - first_sub_dt).days
-                if age_days > 180:
-                    red = config.get("VT_SCORE_REDUCTION_OLD_CLEAN", 5)
-                    positive_trust_offset += red
-                    mitigating_factors.append(f"VirusTotal: Long clean submission history (first submitted {age_days} days ago) (-{red})")
-            except Exception:
-                pass
+    # 4. CONTENT POLICY SCORE (Gambling / Adult / Betting)
+    # This overrides everything — content policy violations get a floor score
+    content_policy = page_signals.get("content_policy", {})
+    content_policy_floor = 0
+    if content_policy and content_policy.get("detected"):
+        cp_type = content_policy.get("type", "unknown")
+        cp_bump = config.get("CONTENT_POLICY_SCORE_BUMP", 25)
+        external_risk_score += cp_bump
+        content_policy_floor = config.get("CONTENT_POLICY_FLOOR", suspicious_threshold)
+        contributing_factors.append(
+            f"Content policy violation: {cp_type} website detected (+{cp_bump})"
+        )
 
-        # Subtract if community votes are harmless
-        votes = url_report.get("votes", {})
-        harmless_votes = votes.get("harmless", 0)
-        malicious_votes = votes.get("malicious", 0)
-        if harmless_votes > 10 and malicious_votes == 0 and malicious == 0:
-            red = config.get("VT_SCORE_REDUCTION_HARMLESS_VOTES", 3)
-            positive_trust_offset += red
-            mitigating_factors.append(f"VirusTotal: Strong community agreement on safety ({harmless_votes} harmless votes) (-{red})")
+    # Brand + Content Policy Compound Rule
+    # If a domain uses a legitimate brand name for illegal purposes (betting/gambling/adult),
+    # it is phishing regardless of other signals
+    has_brand = bool(features.get("brand_hits"))
+    brand_illegal_compound = False
+    if has_brand and content_policy and content_policy.get("detected"):
+        brand_illegal_compound = True
+        brand_list = features.get("brand_hits", [])
+        contributing_factors.append(
+            f"Brand impersonation ({', '.join(brand_list)}) combined with illegal "
+            f"content ({content_policy['type']}) — elevated to phishing"
+        )
 
-    # Additional mitigation for very old domains
-    if domain_age > 730:
-        positive_trust_offset += 5
-        mitigating_factors.append("Domain age is highly mature (>2 years) (-5)")
+    # 5. POSITIVE TRUST OFFSET
+    # Skip VT-based mitigation if content policy was violated (illegal content overrides)
+    skip_vt_mitigation = content_policy and content_policy.get("detected")
+    if not skip_vt_mitigation:
+        if vt_summary and vt_summary.get("status") == "success":
+            url_report = vt_summary.get("url_report", {})
+            stats = url_report.get("stats", {})
+            malicious = stats.get("malicious_count", url_report.get("malicious_count", 0))
+
+            # We can subtract if clean history exists
+            dates = url_report.get("dates", {})
+            first_sub = dates.get("first_submission_date")
+            if first_sub and malicious == 0:
+                from datetime import datetime, timezone
+                try:
+                    first_sub_dt = datetime.fromisoformat(first_sub)
+                    age_days = (datetime.now(timezone.utc) - first_sub_dt).days
+                    if age_days > 180:
+                        red = config.get("VT_SCORE_REDUCTION_OLD_CLEAN", 5)
+                        positive_trust_offset += red
+                        mitigating_factors.append(f"VirusTotal: Long clean submission history (first submitted {age_days} days ago) (-{red})")
+                except Exception:
+                    pass
+
+            # Subtract if community votes are harmless
+            votes = url_report.get("votes", {})
+            harmless_votes = votes.get("harmless", 0)
+            malicious_votes = votes.get("malicious", 0)
+            if harmless_votes > 10 and malicious_votes == 0 and malicious == 0:
+                red = config.get("VT_SCORE_REDUCTION_HARMLESS_VOTES", 3)
+                positive_trust_offset += red
+                mitigating_factors.append(f"VirusTotal: Strong community agreement on safety ({harmless_votes} harmless votes) (-{red})")
+
+        # Additional mitigation for very old domains
+        if domain_age > 730:
+            positive_trust_offset += 5
+            mitigating_factors.append("Domain age is highly mature (>2 years) (-5)")
+    else:
+        mitigating_factors.append(
+            "Content policy violation: positive trust offset skipped (illegal content overrides clean history)"
+        )
 
     # Cap positive trust offset
     max_reduction = config.get("VT_MAX_POSITIVE_REDUCTION", 10)
     positive_trust_offset = min(positive_trust_offset, max_reduction)
 
 
-    # 5. FINAL SCORE FUSION & BOUNDING
+    # 6. FINAL SCORE FUSION & BOUNDING
     base_local_and_domain = local_risk_score + domain_risk_score
     final_risk_score = base_local_and_domain + external_risk_score - positive_trust_offset
 
-    phishing_threshold = config.get("PHISHING_THRESHOLD", 50)
-    suspicious_threshold = config.get("SUSPICIOUS_THRESHOLD", 25)
+    # Count external sources early (needed for unknown domain floor below)
+    sources_count = 0
+    if sb_signal != "not available":
+        sources_count += 1
+    if ipdb_signal != "not available":
+        sources_count += 1
+    if vt_signal != "not available":
+        sources_count += 1
+    if us_signal != "not available":
+        sources_count += 1
 
     if base_local_and_domain >= phishing_threshold:
         if final_risk_score < phishing_threshold:
@@ -969,37 +1016,85 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
             final_risk_score = suspicious_threshold
             mitigating_factors.append("Mitigation capped: local suspicious patterns override external clean history")
 
+    # Content policy floor: gambling/adult/betting sites are always at least suspicious
+    if content_policy_floor > 0 and final_risk_score < content_policy_floor:
+        final_risk_score = content_policy_floor
+        cp_type = content_policy.get("type", "unknown") if content_policy else "unknown"
+        mitigating_factors.append(
+            f"Content policy floor applied: {cp_type} content elevated to suspicious baseline"
+        )
+
+    # Brand + illegal content compound: phishing floor
+    # e.g. "google" in domain + betting content = phishing regardless of other signals
+    if brand_illegal_compound and final_risk_score < phishing_threshold:
+        final_risk_score = phishing_threshold
+        mitigating_factors.append(
+            "Brand impersonation + illegal content compound: forced to phishing threshold"
+        )
+
+    # Unknown domain suspicion floor:
+    # Domains with no brand match AND no external threat corroboration
+    # get elevated to suspicious baseline. Exception: domains with strong
+    # VT community votes (>50 harmless, 0 malicious) are trusted.
+    has_vt_corroboration = vt_signal == "flagged"
+    has_us_corroboration = us_signal == "flagged"
+    has_sb_corroboration = sb_signal == "flagged"
+    has_ipdb_corroboration = ipdb_signal == "flagged"
+    has_any_corroboration = any([has_vt_corroboration, has_us_corroboration,
+                                  has_sb_corroboration, has_ipdb_corroboration])
+
+    min_sources_for_unknown = config.get("UNKNOWN_DOMAIN_MIN_SOURCES", 2)
+    if not has_brand and not has_any_corroboration and sources_count >= min_sources_for_unknown:
+        trusted_by_vt = False
+        if vt_summary and vt_summary.get("status") == "success":
+            vt_url = vt_summary.get("url_report", {})
+            vt_votes = vt_url.get("votes", {})
+            vt_harmless = vt_votes.get("harmless", 0)
+            vt_malicious_votes = vt_votes.get("malicious", 0)
+            vt_stats = vt_url.get("stats", {})
+            vt_malicious_engines = vt_stats.get("malicious_count", 0)
+            vt_harmless_engines = vt_stats.get("harmless_count", 0)
+            # Trust if strong community votes OR overwhelmingly clean engine results
+            if vt_harmless > 50 and vt_malicious_votes == 0 and vt_malicious_engines == 0:
+                trusted_by_vt = True
+            elif vt_harmless_engines > 30 and vt_malicious_engines == 0:
+                trusted_by_vt = True
+
+        if not trusted_by_vt:
+            unknown_floor = config.get("UNKNOWN_DOMAIN_SUSPICIOUS_FLOOR", suspicious_threshold)
+            if final_risk_score < unknown_floor:
+                final_risk_score = unknown_floor
+                contributing_factors.append(
+                    "Domain has no brand match and insufficient external corroboration "
+                    "(elevated to suspicious baseline)"
+                )
+
     final_risk_score = max(0, min(final_risk_score, 100))
     final_label = compute_label_from_score(final_risk_score, config)
 
     # Blend confidence evaluation
-    sources_count = 0
     flagged_sources = 0
     clean_sources = 0
 
     if sb_signal != "not available":
-        sources_count += 1
         if sb_signal == "flagged":
             flagged_sources += 1
         else:
             clean_sources += 1
 
     if ipdb_signal != "not available":
-        sources_count += 1
         if ipdb_signal == "flagged":
             flagged_sources += 1
         else:
             clean_sources += 1
 
     if vt_signal != "not available":
-        sources_count += 1
         if vt_signal == "flagged":
             flagged_sources += 1
         else:
             clean_sources += 1
 
     if us_signal != "not available":
-        sources_count += 1
         if us_signal == "flagged":
             flagged_sources += 1
         else:
@@ -1401,6 +1496,62 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
         if abuseipdb_data:
             page_signals["abuseipdb_summary"] = abuseipdb_data
 
+    # Content Policy Detection (gambling/adult/betting)
+    if config.get("CONTENT_POLICY_ENABLED", True):
+        page_text = ""
+        if response is not None:
+            page_text = getattr(response, "_safe_text", "") or ""
+
+        cp_type, cp_reasons = detect_content_policy(normalized, page_text, features)
+        if cp_type:
+            page_signals["content_policy"] = {
+                "detected": True,
+                "type": cp_type,
+                "source": "url_content",
+                "evidence": cp_reasons[0] if cp_reasons else "",
+            }
+            reasons.extend(cp_reasons)
+
+        # Also check VT categories for content policy violations
+        if not page_signals.get("content_policy", {}).get("detected"):
+            vt_for_cp = page_signals.get("vt_summary", {})
+            if vt_for_cp and vt_for_cp.get("status") == "success":
+                vt_cats = vt_for_cp.get("url_report", {}).get("categories", [])
+                vt_cp_type, vt_cp_cat = check_vt_categories_for_content_policy(vt_cats)
+                if vt_cp_type:
+                    page_signals["content_policy"] = {
+                        "detected": True,
+                        "type": vt_cp_type,
+                        "source": "virustotal",
+                        "evidence": vt_cp_cat,
+                    }
+                    reasons.append(f"Content policy: VT classified URL as '{vt_cp_cat}' ({vt_cp_type})")
+
+        # Also check urlscan categories for content policy violations
+        if not page_signals.get("content_policy", {}).get("detected"):
+            us_for_cp = page_signals.get("us_summary", {})
+            if us_for_cp and us_for_cp.get("status") == "success":
+                us_cats = us_for_cp.get("overall_categories", [])
+                us_cp_type, us_cp_cat = check_vt_categories_for_content_policy(us_cats)
+                if us_cp_type:
+                    page_signals["content_policy"] = {
+                        "detected": True,
+                        "type": us_cp_type,
+                        "source": "urlscan",
+                        "evidence": us_cp_cat,
+                    }
+                    reasons.append(f"Content policy: urlscan classified URL as '{us_cp_cat}' ({us_cp_type})")
+
+        cp_detected = page_signals.get("content_policy", {})
+        if cp_detected and cp_detected.get("detected"):
+            try:
+                current_app.logger.info(
+                    f"[CONTENT POLICY] VIOLATION DETECTED: type={cp_detected['type']} "
+                    f"source={cp_detected['source']} evidence={cp_detected['evidence']}"
+                )
+            except RuntimeError:
+                pass
+
     # Score the analysis
     risk_score, label = score_analysis(features, page_signals, reasons, config)
 
@@ -1456,6 +1607,7 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
             "domain_trust": domain_info.get("domain_trust", {}),
         },
         "brand_token_hits": features.get("brand_hits", []),
+        "content_policy": page_signals.get("content_policy", {}),
     }
     explanations = _build_explanations(list(dict.fromkeys(reasons)))
 

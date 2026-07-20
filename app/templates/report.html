@@ -7,6 +7,18 @@
   </div>
 </section>
 
+{% if data.features_summary and data.features_summary.content_policy and data.features_summary.content_policy.detected %}
+<section class="card" style="border-left: 4px solid #e74c3c; background: rgba(231,76,60,0.08);">
+  <h2 style="color: #e74c3c;">Content Policy Violation Detected</h2>
+  <div class="key-value">
+    <div><span>Category</span><span class="score-phishing">{{ data.features_summary.content_policy.type | upper }}</span></div>
+    <div><span>Detected Via</span><span>{{ data.features_summary.content_policy.source | title }}</span></div>
+    <div><span>Evidence</span><span>{{ data.features_summary.content_policy.evidence }}</span></div>
+    <div><span>Policy</span><span>Content of this type is flagged per regulatory compliance for the Indian market (gambling, betting, and adult content).</span></div>
+  </div>
+</section>
+{% endif %}
+
 <section class="grid two-up">
   <article class="card">
     <h2>Summary</h2>

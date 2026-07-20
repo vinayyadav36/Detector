@@ -17,26 +17,48 @@ import OpenSSL
 SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "ow.ly"}
 SUSPICIOUS_KEYWORDS = {
     "login", "verify", "secure", "bank", "update", "confirm", "account",
-    "password", "paypal", "signin", "wallet", "auth",
-    "bonus", "free", "onlinegames", "betting"
+    "password", "paypal", "signin", "wallet", "auth","bonus" , "jackpot","wager","odds" , "slots" , "roulette" , "poker" , "casino" , "onlinecasino" ,"bet" , "betting" , "win" , "lottery" , "gamble" , "gambling", "porn" , "pornography" ,  "adult" ,"xxx" ,"xnxx" , "xhamster" , "sex" , "online sex" , "nude" , "nudechat","webcam","escort","nsfw","claim","prize","gift","reward","free","offer","win",
+    "bonus", "free", "onlinegames", "betting" ,"freebet" , "cashout" , "promo" , "vip" , "sportsbook",
+    "manygames", "aviator", "get-your-id", "visit-site", "daily-income", "easy-process",
+    "id-ke-liye", "id-banye", "refill-bonus", "no-rolling", "fast-reliable-secure",
 }
 PHISHING_TLDS = {".xyz", ".top", ".club", ".info", ".work", ".click", ".pw", ".gq", ".tk"}
 
-TOP_BRANDS = {
-    "google", "amazon", "microsoft", "apple", "facebook",
-    "paypal", "netflix", "linkedin", "twitter", "instagram",
-    "whatsapp", "youtube", "adobe", "dropbox", "salesforce",
-    "chase", "bankofamerica", "wellsfargo", "citi", "yahoo",
-    "tanishq", "tata", "fairplay", "sbiyono", "hdfc",
-    "icici", "axis", "kotak", "yesbank", "paytm",
-    "phonepe", "gpay", "amazonpay", "mobikwik", "freecharge",
-    "flipkart", "myntra", "ajio", "meesho", "nykaa",
-    "swiggy", "zomato", "ola", "uber", "rapido",
-    "byju", "unacademy", "coursera", "udemy",
-    "github", "bitbucket", "gitlab",
-    "stripe", "square", "venmo", "zelle",
-    "dhl", "fedex", "ups", "usps", "bluedart",
-}
+TOP_BRANDS = [
+    # Technology & Services
+    "apple", "microsoft", "google", "amazon", "facebook", 
+    "instagram", "whatsapp", "netflix", "spotify", "adobe", 
+    "cisco", "ibm", "intel", "samsung", "sony", "roblox", 
+    "nintendo", "playstation", "xbox", "zoom", "salesforce", 
+    "slack", "discord", "tesla", "nvidia", "amd", "logitech","linkedin","twitter","snapchat","tiktok","reddit","pinterest","quora","tumblr",
+    
+    # E-commerce, Retail & Shipping
+    "walmart", "target", "costco", "shopify", "fedex", 
+    "dhl", "ups", "usps", "homedepot", "ikea", "nike", 
+    "adidas", "puma", "sephora", "gucci", "chanel", 
+    "louisvuitton", "rolex", "tiffany", "crocs","flipkart","snapdeal","myntra","ajio","amazonprime","ebay","aliexpress","wish","shein",
+    
+    # Financial, Crypto & Banking
+    "paypal", "chase", "bankofamerica", "wellsfargo", 
+    "citi", "capitalone", "hsbc", "barclays", "americanexpress", 
+    "mastercard", "visa", "discover", "usaa", "coinbase", 
+    "binance", "kraken", "square", "stripe", "cashapp","sbi","hdfc","icici","axisbank","paytm","phonepe","googlepay","razorpay","upstox","groww","sbiyono",
+    
+    # Telecommunications & Mobile
+    "airtel", "idea", "bsnl", "vodafone", 
+    
+    # Food, Beverage & Dining
+    "cocacola", "pepsi", "mcdonalds", "starbucks", "nestle", 
+    "redbull", "dunkin", "chipotle", "chickfila", "kfc",
+    
+    # Automotive
+    "toyota", "ford", "honda", "bmw", "mercedes", 
+    "audi", "porsche", "volkswagen", "nissan", "hyundai",
+    
+    # Travel & Hospitality
+    "airbnb", "uber", "lyft", "marriott", "hilton", 
+    "delta", "southwest", "expedia", "booking"
+]
 
 
 class AnalysisInputError(ValueError):
@@ -436,3 +458,135 @@ def get_domain_intelligence(
     }
 
     return info, reasons
+
+
+CONTENT_POLICY_KEYWORDS = {
+    "gambling": [
+        "casino", "casinos", "onlinecasino", "livecasino", "live-casino",
+        "gambling", "gamble", "gambl", "gambler",
+        "betting", "bet365", "betway", "betwinner", "betonline",
+        "sportsbook", "bookmaker", "bookie",
+        "poker", "pokerstars", "onlinepoker", "pokerroom",
+        "blackjack", "roulette", "baccarat", "craps", "slots", "slot",
+        "jackpot", "jackpots", "mega-jackpot",
+        "wager", "wagering", "stake", "stakes",
+        "lottery", "lotto", "powerball", "megamillions",
+        "spins", "free-spins", "bonus-round",
+        "odds", "parlay", "handicap",
+        "livebet", "inplay", "in-play",
+    ],
+    "betting_india": [
+        "laser247", "skyexch", "diamondexch", "fairplay", "mahadev",
+        "lotus365", "gold365", "cricketbetting", "iplbetting",
+        "satta", "sattamatka", "matka",
+        "1xbet", "parimatch", "melbet", "10cric", "dafabet", "12bet",
+        "mostbet", "linebet", "megapari", "bc.game", "stake.com",
+        "khelostar", "world777", "diamondexchange",
+        "manygames", "aviator", "dailyincome", "easyprocess",
+        "idbanye", "idkeliye", "refillbonus", "norolling",
+        "visit-site", "get-your-id", "fastreliable",
+        "casino", "livecasino", "live-casino", "onlinesatta",
+    ],
+    "adult": [
+        "porn", "pornography", "pornhub", "xvideos", "xnxx", "xhamster",
+        "redtube", "youporn", "tube8", "spankbang",
+        "onlyfans", "fansly",
+        "xxx", "nsfw",
+        "escort", "escorts",
+        "hentai", "hentairead",
+        "camgirl", "cam-girl", "livecam", "webcam-sex",
+        "erotic", "erotica",
+        "nude", "nudes", "naked",
+        "sex", "sexcam", "sexchat",
+    ],
+}
+
+CONTENT_POLICY_CATEGORY_MAP = {
+    "gambling": [
+        "gambling", "gaming", "gambling (alphamountain.ai)", "betting",
+        "casino", "lottery",
+    ],
+    "adult": [
+        "pornography", "adult", "nsfw", "adult content",
+    ],
+}
+
+
+def detect_content_policy(
+    url: str,
+    page_text: str,
+    features: dict[str, Any],
+) -> tuple[str | None, list[str]]:
+    """Check if the URL/page content violates content policy (gambling, adult, etc.).
+
+    Returns (policy_type, reasons) or (None, []) if clean.
+    policy_type is one of: "gambling", "betting_india", "adult".
+    """
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    path_lower = (parsed.path or "").lower()
+    url_lower = url.lower()
+    domain_no_tld = host.split(".")[0] if "." in host else host
+
+    for policy_type, keywords in CONTENT_POLICY_KEYWORDS.items():
+        for kw in keywords:
+            kw_lower = kw.lower()
+            if (
+                kw_lower in domain_no_tld
+                or kw_lower in path_lower
+                or kw_lower in url_lower
+            ):
+                return policy_type, [
+                    f"Content policy: URL contains '{kw}' keyword ({policy_type} category)"
+                ]
+
+    if page_text:
+        text_lower = page_text.lower()
+        gambling_density_keywords = [
+            "place your bet", "bet now", "deposit now", "withdraw",
+            "betting odds", "live betting", "casino bonus",
+            "spin the wheel", "play now", "win real money",
+            "jackpot winner", "free spins", "sign up bonus",
+            "cricket betting", "sports betting", "online betting",
+            "no rolling", "only service", "minimum deposit",
+            "minimum withdrawal", "withdrawal anytime",
+            "only 10 minutes", "only 30 minutes",
+            "id ke liye", "id banye", "fast reliable secure",
+            "24 7 customer support", "daily income", "easy process",
+            "genuine return", "daily plan", "refill bonus",
+            "id in less than", "get your id", "visit site",
+            "match ho ya casino", "soccer ho ya tennis",
+            "aviator ho ya", "live action",
+        ]
+        gambling_hits = sum(1 for phrase in gambling_density_keywords if phrase in text_lower)
+        if gambling_hits >= 1:
+            return "gambling", [
+                f"Content policy: Page content contains {gambling_hits} betting-related phrase(s)"
+            ]
+
+        adult_density_keywords = [
+            "18 only", "18+", "over 18", "adult content",
+            "contains explicit", "mature content",
+        ]
+        adult_hits = sum(1 for phrase in adult_density_keywords if phrase in text_lower)
+        if adult_hits >= 2:
+            return "adult", [
+                f"Content policy: Page content contains {adult_hits} adult-related phrases"
+            ]
+
+    return None, []
+
+
+def check_vt_categories_for_content_policy(
+    categories: list[str],
+) -> tuple[str | None, str | None]:
+    """Check VT/urlscan category labels for content policy violations.
+
+    Returns (policy_type, matched_category) or (None, None).
+    """
+    for cat in categories:
+        cat_lower = cat.lower()
+        for policy_type, policy_cats in CONTENT_POLICY_CATEGORY_MAP.items():
+            if any(pc in cat_lower for pc in policy_cats):
+                return policy_type, cat
+    return None, None
