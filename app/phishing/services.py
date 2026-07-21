@@ -28,6 +28,7 @@ from .heuristics import (
     check_vt_categories_for_content_policy,
     extract_url_features,
     get_domain_intelligence,
+    load_config_from_env,
     normalize_url,
     sanitized_domain,
     url_hash,
@@ -388,7 +389,7 @@ def crawl_website(base_url: str, max_pages: int = 5, timeout: int = 5) -> tuple[
     return "\n\n".join(all_text_parts), all_reasons
 
 
-def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[str, float], list[str]]:
+def deep_content_inspection(response: Response, final_url: str, config: dict | None = None) -> tuple[dict[str, float], list[str]]:
     signals = {
         "has_password_field": 0.0,
         "external_form_action": 0.0,
@@ -525,7 +526,8 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
     # Zero-Connection Content Similarity Check
     # Use phishing-specific phrases rather than generic words to reduce false positives
     # on legitimate developer portfolios, blogs, and documentation sites.
-    suspicious_words = [
+    cfg = config or {}
+    suspicious_words = cfg.get("SUSPICIOUS_PAGE_PHRASES") or [
         'verify your identity', 'enter your password', 'confirm your account',
         'restore your account', 'secure your account', 'update your billing',
         'suspended account', 'unauthorized access', 'verify your payment',
@@ -536,7 +538,7 @@ def deep_content_inspection(response: Response, final_url: str) -> tuple[dict[st
     found_words = [word for word in suspicious_words if word in page_text]
 
     # Fallback: also check individual high-signal words, but require more of them
-    individual_words = ['login', 'verify', 'password', 'security', 'suspended', 'banking', 'wallet', 'account']
+    individual_words = cfg.get("SUSPICIOUS_PAGE_WORDS") or ['login', 'verify', 'password', 'security', 'suspended', 'banking', 'wallet', 'account']
     found_individual = [word for word in individual_words if word in page_text]
     # Only use individual words if the phrase check found nothing and the individual set is very dense
     if not found_words and len(found_individual) >= 5:
@@ -570,45 +572,47 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
 
     # 1. LOCAL RISK SCORE
     # URL-level signals
-    if features.get("url_length", 0) > 75:
-        local_risk_score += 8
-        contributing_factors.append("Long URL length (>75 characters)")
+    url_long_threshold = config.get("URL_LONG_THRESHOLD", 75)
+    if features.get("url_length", 0) > url_long_threshold:
+        local_risk_score += config.get("URL_LONG_PENALTY", 8)
+        contributing_factors.append(f"Long URL length (>{url_long_threshold} characters)")
         
     if features.get("is_typosquatting", 0):
-        local_risk_score += 30
+        local_risk_score += config.get("TYPO_SQUATTING_PENALTY", 30)
         contributing_factors.append("Domain name is close to a known brand (typosquatting check)")
 
-    if features.get("subdomain_count", 0) > 2:
-        sub_penalty = int((features["subdomain_count"] - 2) * 6)
+    sub_threshold = config.get("SUBDOMAIN_THRESHOLD", 2)
+    if features.get("subdomain_count", 0) > sub_threshold:
+        sub_penalty = int((features["subdomain_count"] - sub_threshold) * config.get("SUBDOMAIN_PENALTY_UNIT", 6))
         local_risk_score += sub_penalty
         contributing_factors.append(f"Excessive subdomains ({int(features['subdomain_count'])})")
 
     if features.get("has_ip", 0):
-        local_risk_score += 20
+        local_risk_score += config.get("IP_ADDRESS_PENALTY", 20)
         contributing_factors.append("URL contains raw IP address instead of domain name")
 
     suspicious_chars = int(features.get("suspicious_chars", 0))
     if suspicious_chars > 0:
-        char_penalty = min(suspicious_chars * 2, 12)
+        char_penalty = min(suspicious_chars * config.get("CHAR_PENALTY_UNIT", 2), config.get("CHAR_MAX_PENALTY", 12))
         local_risk_score += char_penalty
         contributing_factors.append(f"Suspicious characters in URL path/params ({suspicious_chars})")
 
     keyword_hits = int(features.get("keyword_hits", 0))
     if keyword_hits > 0:
-        kw_penalty = min(keyword_hits * 6, 24)
+        kw_penalty = min(keyword_hits * config.get("KEYWORD_PENALTY_UNIT", 6), config.get("KEYWORD_MAX_PENALTY", 24))
         local_risk_score += kw_penalty
         contributing_factors.append(f"Suspicious keywords in URL path/params ({keyword_hits})")
 
     if features.get("is_shortener", 0):
-        local_risk_score += 15
+        local_risk_score += config.get("SHORTENER_PENALTY", 15)
         contributing_factors.append("URL uses a known link shortener service")
 
     if features.get("phishing_tld", 0):
-        local_risk_score += 12
+        local_risk_score += config.get("PHISHING_TLD_PENALTY", 12)
         contributing_factors.append("URL uses a TLD commonly associated with phishing")
 
     if not features.get("uses_https", 1):
-        local_risk_score += 10
+        local_risk_score += config.get("NO_HTTPS_PENALTY", 10)
         contributing_factors.append("URL does not use secure HTTPS transport protocol")
 
     # Content-level signals
@@ -618,53 +622,53 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
 
     if page_fetched and not bot_blocked and not binary_response:
         if page_signals.get("has_password_field", 0) and not features.get("uses_https", 1):
-            local_risk_score += 15
+            local_risk_score += config.get("HTTP_PASSWORD_PENALTY", 15)
             contributing_factors.append("Password input fields served over unencrypted HTTP")
             
         if page_signals.get("external_form_action", 0):
-            local_risk_score += 12
+            local_risk_score += config.get("EXTERNAL_FORM_PENALTY", 12)
             contributing_factors.append("Form action submits data to an external domain")
             
         iframe_count = int(page_signals.get("iframe_count", 0))
         if iframe_count > 0:
-            iframe_penalty = min(iframe_count * 5, 15)
+            iframe_penalty = min(iframe_count * config.get("IFRAME_PENALTY_UNIT", 5), config.get("IFRAME_MAX_PENALTY", 15))
             local_risk_score += iframe_penalty
             contributing_factors.append(f"Embedded iframes detected ({iframe_count})")
             
         external_script_count = int(page_signals.get("external_script_count", 0))
         if external_script_count > 0:
-            script_penalty = min(external_script_count * 3, 9)
+            script_penalty = min(external_script_count * config.get("EXTERNAL_SCRIPT_PENALTY_UNIT", 3), config.get("EXTERNAL_SCRIPT_MAX_PENALTY", 9))
             local_risk_score += script_penalty
             contributing_factors.append(f"Loads scripts from external domains ({external_script_count})")
             
         redirect_count = int(page_signals.get("redirect_count", 0))
         if redirect_count > 1:
-            red_penalty = min((redirect_count - 1) * 3, 12)
+            red_penalty = min((redirect_count - 1) * config.get("REDIRECT_PENALTY_UNIT", 3), config.get("REDIRECT_MAX_PENALTY", 12))
             local_risk_score += red_penalty
             contributing_factors.append(f"Multiple server-side redirects observed ({redirect_count})")
             
         if page_signals.get("http_error_status", 0):
-            local_risk_score += 8
+            local_risk_score += config.get("HTTP_ERROR_PENALTY", 8)
             contributing_factors.append("Web server returned an HTTP error status code (>=400)")
             
         if page_signals.get("missing_favicon", 1):
-            local_risk_score += 4
+            local_risk_score += config.get("FAVICON_PENALTY", 4)
             contributing_factors.append("Missing website favicon")
             
         if page_signals.get("no_contact_info", 1):
-            local_risk_score += 5
+            local_risk_score += config.get("NO_CONTACT_PENALTY", 5)
             contributing_factors.append("No company contact details identified on home page")
             
         if page_signals.get("no_privacy_policy_link", 1):
-            local_risk_score += 4
+            local_risk_score += config.get("NO_PRIVACY_POLICY_PENALTY", 4)
             contributing_factors.append("No privacy policy documentation or links found")
             
         if page_signals.get("copyright_year_outdated", 0):
-            local_risk_score += 6
+            local_risk_score += config.get("OUTDATED_COPYRIGHT_PENALTY", 6)
             contributing_factors.append("Outdated copyright year details on page footer")
             
         if page_signals.get("too_many_ads", 0):
-            local_risk_score += 8
+            local_risk_score += config.get("EXCESSIVE_ADS_PENALTY", 8)
             contributing_factors.append("Excessive scripts from known ad-networks")
             
         if page_signals.get("content_domain_mismatch", 0):
@@ -686,23 +690,23 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
                     f"Content-domain mismatch ignored: domain is mature ({domain_age}d) with clean VT history"
                 )
             else:
-                local_risk_score += 12
+                local_risk_score += config.get("CONTENT_MISMATCH_PENALTY", 12)
                 contributing_factors.append("Obvious mismatch between content brand keywords and domain")
 
     # Bot / unreachability logic
     if bot_blocked:
-        local_risk_score += 5
+        local_risk_score += config.get("BOT_BLOCKED_PENALTY", 5)
         contributing_factors.append("Bot-detection challenge (reCAPTCHA / Cloudflare) blocked parsing")
     elif binary_response:
-        local_risk_score += 15
+        local_risk_score += config.get("BINARY_RESPONSE_PENALTY", 15)
         contributing_factors.append("Non-HTML / binary document payload returned")
     elif page_signals.get("page_unreachable", 0):
         domain_age = features.get("domain_age_days", -1)
         if domain_age > config.get("YOUNG_DOMAIN_DAYS", 30):
-            local_risk_score += 10
+            local_risk_score += config.get("UNREACHABLE_PENALTY", 10)
             contributing_factors.append("Target website could not be retrieved over the network")
         else:
-            local_risk_score += 20
+            local_risk_score += config.get("UNREACHABLE_YOUNG_PENALTY", 20)
             contributing_factors.append("Young website domain is completely unreachable")
 
 
@@ -712,34 +716,34 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
 
     if domain_age >= 0 and not whois_unavailable:
         if domain_age < config.get("DOMAIN_AGE_EXTREME_RISK_DAYS", 30):
-            domain_risk_score += 35
+            domain_risk_score += config.get("DOMAIN_EXTREME_YOUNG_PENALTY", 35)
             contributing_factors.append(f"Domain registered extremely recently ({domain_age} days ago)")
         elif domain_age < config.get("DOMAIN_AGE_VERY_HIGH_RISK_DAYS", 90):
-            domain_risk_score += 25
+            domain_risk_score += config.get("DOMAIN_VERY_YOUNG_PENALTY", 25)
             contributing_factors.append(f"Domain registered very recently ({domain_age} days ago)")
         elif domain_age < config.get("DOMAIN_AGE_HIGH_RISK_DAYS", 180):
-            domain_risk_score += 15
+            domain_risk_score += config.get("DOMAIN_YOUNG_PENALTY", 15)
             contributing_factors.append(f"Domain registered recently ({domain_age} days ago)")
         elif domain_age < config.get("DOMAIN_AGE_MODERATE_RISK_DAYS", 365):
-            domain_risk_score += 8
+            domain_risk_score += config.get("DOMAIN_MODERATE_YOUNG_PENALTY", 8)
             contributing_factors.append(f"Domain registered within the last year ({domain_age} days ago)")
     elif whois_unavailable:
-        domain_risk_score += 5
+        domain_risk_score += config.get("WHOIS_UNAVAILABLE_PENALTY", 5)
         contributing_factors.append("WHOIS registration metadata is unavailable")
 
     brand_hits = features.get("brand_hits", [])
     if features.get("brand_impersonation", 0) and brand_hits:
-        domain_risk_score += 10
+        domain_risk_score += config.get("BRAND_IN_DOMAIN_PENALTY", 10)
         contributing_factors.append(f"Domain contains known brand trademark: {', '.join(brand_hits)}")
 
         if features.get("phishing_tld", 0):
-            domain_risk_score += 10
+            domain_risk_score += config.get("BRAND_SUSPICIOUS_TLD_PENALTY", 10)
             contributing_factors.append("Brand name combined with a highly suspicious TLD")
 
         domain_str = features.get("raw_domain", "")
         for brand in brand_hits:
             if re.search(rf"{re.escape(brand)}\d", domain_str, re.IGNORECASE):
-                domain_risk_score += 10
+                domain_risk_score += config.get("BRAND_DIGITS_PENALTY", 10)
                 contributing_factors.append(f"Brand '{brand}' combined with trailing digits (typosquatting pattern)")
                 break
 
@@ -747,34 +751,34 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
             remaining = re.sub(rf"{re.escape(brand)}", "", domain_str, flags=re.IGNORECASE)
             remaining = re.sub(r"[.\-]", "", remaining)
             if len(remaining) >= 3:
-                domain_risk_score += 8
+                domain_risk_score += config.get("BRAND_EXTRA_TEXT_PENALTY", 8)
                 contributing_factors.append(f"Brand '{brand}' combined with extra text '{remaining}'")
                 break
 
         if domain_age > 0 and domain_age < config.get("DOMAIN_AGE_MODERATE_RISK_DAYS", 365):
-            domain_risk_score += 15
+            domain_risk_score += config.get("BRAND_NEW_DOMAIN_PENALTY", 15)
             contributing_factors.append("High risk compound: Domain contains a brand name and is newly registered")
 
     if domain_age > 0 and domain_age < config.get("DOMAIN_AGE_MODERATE_RISK_DAYS", 365):
         if features.get("phishing_tld", 0):
-            domain_risk_score += 10
+            domain_risk_score += config.get("SUSPICIOUS_TLD_NEW_PENALTY", 10)
             contributing_factors.append("High risk compound: Suspicious TLD combined with recently registered domain")
 
     # SSL Cert details
     if features.get("ssl_issues", 0.0) > 0:
-        domain_risk_score += 10
+        domain_risk_score += config.get("SSL_ISSUES_PENALTY", 10)
         contributing_factors.append("SSL certificate is expired or invalid")
         
     # Free/Weak issuer check
     for reason in reasons:
         if "free issuer" in reason:
-            domain_risk_score += 5
+            domain_risk_score += config.get("FREE_SSL_ISSUER_PENALTY", 5)
             contributing_factors.append("Uses a free SSL certificate issuer (often used in phishing campaigns)")
             break
 
     # DNS records (MX records)
     if features.get("dns_issues", 0.0) > 0:
-        domain_risk_score += 10
+        domain_risk_score += config.get("NO_MX_PENALTY", 10)
         contributing_factors.append("Domain has no MX records (unable to receive emails)")
 
 
@@ -782,11 +786,12 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
     # Safe Browsing
     sb_summary = page_signals.get("sb_summary", {})
     sb_signal = "not available"
+    sb_penalty = config.get("SB_FLAGGED_PENALTY", 20)
     if sb_summary and sb_summary.get("status") == "success":
         if not sb_summary.get("safe") and not sb_summary.get("no_threats_found"):
-            external_risk_score += 20
+            external_risk_score += sb_penalty
             threats = sb_summary.get("threat_types", [])
-            contributing_factors.append(f"Google Safe Browsing flagged this URL. Threat(s): {', '.join(threats)} (+20)")
+            contributing_factors.append(f"Google Safe Browsing flagged this URL. Threat(s): {', '.join(threats)} (+{sb_penalty})")
             sb_signal = "flagged"
         else:
             sb_signal = "clean"
@@ -797,7 +802,9 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
     if abuseipdb_summary and abuseipdb_summary.get("status") == "success":
         confidence = abuseipdb_summary.get("abuseConfidenceScore", 0)
         if confidence > 0:
-            bump = min(int(confidence / 5), 15)
+            ab_divisor = config.get("ABUSEIPDB_CONFIDENCE_DIVISOR", 5)
+            ab_max = config.get("ABUSEIPDB_MAX_PENALTY", 15)
+            bump = min(int(confidence / ab_divisor), ab_max)
             external_risk_score += bump
             contributing_factors.append(f"AbuseIPDB flagged host IP with {confidence}% abuse confidence (+{bump})")
             if confidence > 25:
@@ -876,8 +883,9 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
             dom_stats = domain_report.get("last_analysis_stats", {})
             dom_malicious = dom_stats.get("malicious", 0)
             if dom_malicious > 0:
-                total_vt_penalty += 15
-                contributing_factors.append(f"VirusTotal: Domain has {dom_malicious} malicious engine flag(s) (+15)")
+                vt_dom_penalty = config.get("VT_DOMAIN_MALICIOUS_PENALTY", 15)
+                total_vt_penalty += vt_dom_penalty
+                contributing_factors.append(f"VirusTotal: Domain has {dom_malicious} malicious engine flag(s) (+{vt_dom_penalty})")
 
         # IP report additions
         ip_report = vt_summary.get("ip_report")
@@ -886,7 +894,7 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
             ip_malicious = ip_stats.get("malicious", 0)
             if ip_malicious > 0:
                 # Skip IP penalty for known shared hosting platforms
-                shared_hosting_indicators = [
+                shared_hosting_indicators = config.get("SHARED_HOSTING_INDICATORS") or [
                     "vercel", "netlify", "github", "cloudflare", "amazon",
                     "google cloud", "microsoft azure", "heroku", "render",
                     "railway", "fly.io", "digitalocean"
@@ -898,15 +906,16 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
                     for indicator in shared_hosting_indicators
                 )
                 if not is_shared_hosting:
-                    total_vt_penalty += 15
-                    contributing_factors.append(f"VirusTotal: Host IP has {ip_malicious} malicious engine flag(s) (+15)")
+                    vt_ip_penalty = config.get("VT_IP_MALICIOUS_PENALTY", 15)
+                    total_vt_penalty += vt_ip_penalty
+                    contributing_factors.append(f"VirusTotal: Host IP has {ip_malicious} malicious engine flag(s) (+{vt_ip_penalty})")
                 else:
                     contributing_factors.append(
                         f"VirusTotal: Host IP has {ip_malicious} flag(s) but is on shared hosting ({ip_as_owner or 'unknown'}) — skipped"
                     )
 
         # Cap total VT penalty
-        external_risk_score += min(total_vt_penalty, 40)
+        external_risk_score += min(total_vt_penalty, config.get("VT_TOTAL_CAP", 40))
 
         # Signal labeling
         if malicious > 0 or suspicious > 0 or (domain_report and domain_report.get("last_analysis_stats", {}).get("malicious", 0) > 0):
@@ -979,9 +988,11 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
                 mitigating_factors.append(f"VirusTotal: Strong community agreement on safety ({harmless_votes} harmless votes) (-{red})")
 
         # Additional mitigation for very old domains
-        if domain_age > 730:
-            positive_trust_offset += 5
-            mitigating_factors.append("Domain age is highly mature (>2 years) (-5)")
+        very_old_threshold = config.get("DOMAIN_VERY_OLD_THRESHOLD", 730)
+        if domain_age > very_old_threshold:
+            very_old_trust = config.get("DOMAIN_VERY_OLD_TRUST", 5)
+            positive_trust_offset += very_old_trust
+            mitigating_factors.append(f"Domain age is highly mature (>{very_old_threshold}d) (-{very_old_trust})")
     else:
         mitigating_factors.append(
             "Content policy violation: positive trust offset skipped (illegal content overrides clean history)"
@@ -1153,6 +1164,7 @@ def score_analysis(features: dict[str, float], page_signals: dict[str, float], r
 
 
 def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) -> AnalysisResult:
+    load_config_from_env(config)
     timeout = max(int(config.get("REQUEST_TIMEOUT_SECONDS", 10)), 1)
     retry_count = max(int(config.get("REQUEST_RETRY_COUNT", 1)), 0)
     normalized = normalize_url(raw_url)
@@ -1247,7 +1259,7 @@ def run_analysis(raw_url: str, config: dict[str, Any], *, persist: bool = True) 
                 if bot_blocked:
                     page_signals["bot_detection"] = 1.0
                 else:
-                    content_signals, content_reasons = deep_content_inspection(response, response.url)
+                    content_signals, content_reasons = deep_content_inspection(response, response.url, config)
                     page_signals.update(content_signals)
                     reasons.extend(content_reasons)
 

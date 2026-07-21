@@ -14,51 +14,159 @@ import ssl
 import dns.resolver
 import OpenSSL
 
-SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "ow.ly"}
-SUSPICIOUS_KEYWORDS = {
+# ── Configurable lists (overridable via heuristics.load_config_from_env()) ──
+SHORTENERS: set[str] = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "ow.ly"}
+SUSPICIOUS_KEYWORDS: set[str] = {
     "login", "verify", "secure", "bank", "update", "confirm", "account",
     "password", "paypal", "signin", "wallet", "auth","bonus" , "jackpot","wager","odds" , "slots" , "roulette" , "poker" , "casino" , "onlinecasino" ,"bet" , "betting" , "win" , "lottery" , "gamble" , "gambling", "porn" , "pornography" ,  "adult" ,"xxx" ,"xnxx" , "xhamster" , "sex" , "online sex" , "nude" , "nudechat","webcam","escort","nsfw","claim","prize","gift","reward","free","offer","win",
     "bonus", "free", "onlinegames", "betting" ,"freebet" , "cashout" , "promo" , "vip" , "sportsbook",
     "manygames", "aviator", "get-your-id", "visit-site", "daily-income", "easy-process",
     "id-ke-liye", "id-banye", "refill-bonus", "no-rolling", "fast-reliable-secure",
 }
-PHISHING_TLDS = {".xyz", ".top", ".club", ".info", ".work", ".click", ".pw", ".gq", ".tk"}
+PHISHING_TLDS: set[str] = {".xyz", ".top", ".club", ".info", ".work", ".click", ".pw", ".gq", ".tk"}
 
-TOP_BRANDS = [
-    # Technology & Services
-    "apple", "microsoft", "google", "amazon", "facebook", 
-    "instagram", "whatsapp", "netflix", "spotify", "adobe", 
-    "cisco", "ibm", "intel", "samsung", "sony", "roblox", 
-    "nintendo", "playstation", "xbox", "zoom", "salesforce", 
+TOP_BRANDS: list[str] = [
+    "apple", "microsoft", "google", "amazon", "facebook",
+    "instagram", "whatsapp", "netflix", "spotify", "adobe",
+    "cisco", "ibm", "intel", "samsung", "sony", "roblox",
+    "nintendo", "playstation", "xbox", "zoom", "salesforce",
     "slack", "discord", "tesla", "nvidia", "amd", "logitech","linkedin","twitter","snapchat","tiktok","reddit","pinterest","quora","tumblr",
-    
-    # E-commerce, Retail & Shipping
-    "walmart", "target", "costco", "shopify", "fedex", 
-    "dhl", "ups", "usps", "homedepot", "ikea", "nike", 
-    "adidas", "puma", "sephora", "gucci", "chanel", 
+    "walmart", "target", "costco", "shopify", "fedex",
+    "dhl", "ups", "usps", "homedepot", "ikea", "nike",
+    "adidas", "puma", "sephora", "gucci", "chanel",
     "louisvuitton", "rolex", "tiffany", "crocs","flipkart","snapdeal","myntra","ajio","amazonprime","ebay","aliexpress","wish","shein",
-    
-    # Financial, Crypto & Banking
-    "paypal", "chase", "bankofamerica", "wellsfargo", 
-    "citi", "capitalone", "hsbc", "barclays", "americanexpress", 
-    "mastercard", "visa", "discover", "usaa", "coinbase", 
+    "paypal", "chase", "bankofamerica", "wellsfargo",
+    "citi", "capitalone", "hsbc", "barclays", "americanexpress",
+    "mastercard", "visa", "discover", "usaa", "coinbase",
     "binance", "kraken", "square", "stripe", "cashapp","sbi","hdfc","icici","axisbank","paytm","phonepe","googlepay","razorpay","upstox","groww","sbiyono",
-    
-    # Telecommunications & Mobile
-    "airtel", "idea", "bsnl", "vodafone", 
-    
-    # Food, Beverage & Dining
-    "cocacola", "pepsi", "mcdonalds", "starbucks", "nestle", 
+    "airtel", "idea", "bsnl", "vodafone",
+    "cocacola", "pepsi", "mcdonalds", "starbucks", "nestle",
     "redbull", "dunkin", "chipotle", "chickfila", "kfc",
-    
-    # Automotive
-    "toyota", "ford", "honda", "bmw", "mercedes", 
+    "toyota", "ford", "honda", "bmw", "mercedes",
     "audi", "porsche", "volkswagen", "nissan", "hyundai",
-    
-    # Travel & Hospitality
-    "airbnb", "uber", "lyft", "marriott", "hilton", 
-    "delta", "southwest", "expedia", "booking"
+    "airbnb", "uber", "lyft", "marriott", "hilton",
+    "delta", "southwest", "expedia", "booking",
 ]
+
+CONTENT_POLICY_KEYWORDS: dict[str, list[str]] = {
+    "gambling": [
+        "casino", "casinos", "onlinecasino", "livecasino", "live-casino",
+        "gambling", "gamble", "gambl", "gambler",
+        "betting", "bet365", "betway", "betwinner", "betonline",
+        "sportsbook", "bookmaker", "bookie",
+        "poker", "pokerstars", "onlinepoker", "pokerroom",
+        "blackjack", "roulette", "baccarat", "craps", "slots", "slot",
+        "jackpot", "jackpots", "mega-jackpot",
+        "wager", "wagering", "stake", "stakes",
+        "lottery", "lotto", "powerball", "megamillions",
+        "spins", "free-spins", "bonus-round",
+        "odds", "parlay", "handicap",
+        "livebet", "inplay", "in-play",
+    ],
+    "betting_india": [
+        "laser247", "skyexch", "diamondexch", "fairplay", "mahadev",
+        "lotus365", "gold365", "cricketbetting", "iplbetting",
+        "satta", "sattamatka", "matka",
+        "1xbet", "parimatch", "melbet", "10cric", "dafabet", "12bet",
+        "mostbet", "linebet", "megapari", "bc.game", "stake.com",
+        "khelostar", "world777", "diamondexchange",
+        "manygames", "aviator", "dailyincome", "easyprocess",
+        "idbanye", "idkeliye", "refillbonus", "norolling",
+        "visit-site", "get-your-id", "fastreliable",
+        "casino", "livecasino", "live-casino", "onlinesatta",
+    ],
+    "adult": [
+        "porn", "pornography", "pornhub", "xvideos", "xnxx", "xhamster",
+        "redtube", "youporn", "tube8", "spankbang",
+        "onlyfans", "fansly",
+        "xxx", "nsfw",
+        "escort", "escorts",
+        "hentai", "hentairead",
+        "camgirl", "cam-girl", "livecam", "webcam-sex",
+        "erotic", "erotica",
+        "nude", "nudes", "naked",
+        "sex", "sexcam", "sexchat",
+    ],
+}
+
+CONTENT_POLICY_CATEGORY_MAP: dict[str, list[str]] = {
+    "gambling": [
+        "gambling", "gaming", "gambling (alphamountain.ai)", "betting",
+        "casino", "lottery",
+    ],
+    "adult": [
+        "pornography", "adult", "nsfw", "adult content",
+    ],
+}
+
+# ── Content-phrase lists used inside detect_content_policy ──
+GAMBLING_DENSITY_KEYWORDS: list[str] = [
+    "place your bet", "bet now", "deposit now", "withdraw",
+    "betting odds", "live betting", "casino bonus",
+    "spin the wheel", "play now", "win real money",
+    "jackpot winner", "free spins", "sign up bonus",
+    "cricket betting", "sports betting", "online betting",
+    "no rolling", "only service", "minimum deposit",
+    "minimum withdrawal", "withdrawal anytime",
+    "only 10 minutes", "only 30 minutes",
+    "id ke liye", "id banye", "fast reliable secure",
+    "24 7 customer support", "daily income", "easy process",
+    "genuine return", "daily plan", "refill bonus",
+    "id in less than", "get your id", "visit site",
+    "match ho ya casino", "soccer ho ya tennis",
+    "aviator ho ya", "live action",
+]
+ADULT_DENSITY_KEYWORDS: list[str] = [
+    "18 only", "18+", "over 18", "adult content",
+    "contains explicit", "mature content",
+]
+
+
+def load_config_from_env(config: dict) -> None:
+    """Override module-level lists from config dict (populated from .env)."""
+    global TOP_BRANDS, SUSPICIOUS_KEYWORDS, SHORTENERS, PHISHING_TLDS
+    global CONTENT_POLICY_KEYWORDS, CONTENT_POLICY_CATEGORY_MAP
+    global GAMBLING_DENSITY_KEYWORDS, ADULT_DENSITY_KEYWORDS
+
+    if config.get("TOP_BRANDS"):
+        TOP_BRANDS = config["TOP_BRANDS"]
+    if config.get("SUSPICIOUS_KEYWORDS"):
+        SUSPICIOUS_KEYWORDS = config["SUSPICIOUS_KEYWORDS"]
+    if config.get("SHORTENERS"):
+        SHORTENERS = config["SHORTENERS"]
+    if config.get("PHISHING_TLDS"):
+        PHISHING_TLDS = config["PHISHING_TLDS"]
+
+    # Content policy keywords (rebuild dict from individual lists)
+    cp_gambling = config.get("CONTENT_POLICY_KEYWORDS_GAMBLING")
+    cp_betting = config.get("CONTENT_POLICY_KEYWORDS_BETTING_INDIA")
+    cp_adult = config.get("CONTENT_POLICY_KEYWORDS_ADULT")
+    if cp_gambling or cp_betting or cp_adult:
+        rebuilt: dict[str, list[str]] = {}
+        if cp_gambling:
+            rebuilt["gambling"] = cp_gambling
+        if cp_betting:
+            rebuilt["betting_india"] = cp_betting
+        if cp_adult:
+            rebuilt["adult"] = cp_adult
+        if rebuilt:
+            CONTENT_POLICY_KEYWORDS = rebuilt
+
+    cp_cat_gambling = config.get("CONTENT_POLICY_CATEGORIES_GAMBLING")
+    cp_cat_adult = config.get("CONTENT_POLICY_CATEGORIES_ADULT")
+    if cp_cat_gambling or cp_cat_adult:
+        rebuilt_map: dict[str, list[str]] = {}
+        if cp_cat_gambling:
+            rebuilt_map["gambling"] = cp_cat_gambling
+        if cp_cat_adult:
+            rebuilt_map["adult"] = cp_cat_adult
+        if rebuilt_map:
+            CONTENT_POLICY_CATEGORY_MAP = rebuilt_map
+
+    if config.get("GAMBLING_DENSITY_KEYWORDS"):
+        GAMBLING_DENSITY_KEYWORDS = config["GAMBLING_DENSITY_KEYWORDS"]
+    if config.get("ADULT_DENSITY_KEYWORDS"):
+        ADULT_DENSITY_KEYWORDS = config["ADULT_DENSITY_KEYWORDS"]
 
 
 class AnalysisInputError(ValueError):
@@ -177,7 +285,8 @@ def _check_brand_in_domain(host_no_tld: str, host: str) -> tuple[float, list[str
 
     for brand in TOP_BRANDS:
         dist = levenshtein_distance(host_no_tld, brand)
-        if 0 < dist <= 2:
+        max_dist = min(2, min(len(host_no_tld), len(brand)) // 2)
+        if 0 < dist <= max_dist:
             reasons.append(f"Domain is close to brand '{brand}' (edit distance {dist})")
             score = max(score, 1.0)
             break
@@ -291,7 +400,8 @@ def extract_url_features(url: str) -> tuple[dict[str, float], list[str]]:
     is_typosquatting = 0.0
     for brand in TOP_BRANDS:
         dist = levenshtein_distance(host_no_tld, brand)
-        if 0 < dist <= 2:
+        max_dist = min(2, min(len(host_no_tld), len(brand)) // 2)
+        if 0 < dist <= max_dist:
             is_typosquatting = 1.0
             break
 
@@ -460,56 +570,7 @@ def get_domain_intelligence(
     return info, reasons
 
 
-CONTENT_POLICY_KEYWORDS = {
-    "gambling": [
-        "casino", "casinos", "onlinecasino", "livecasino", "live-casino",
-        "gambling", "gamble", "gambl", "gambler",
-        "betting", "bet365", "betway", "betwinner", "betonline",
-        "sportsbook", "bookmaker", "bookie",
-        "poker", "pokerstars", "onlinepoker", "pokerroom",
-        "blackjack", "roulette", "baccarat", "craps", "slots", "slot",
-        "jackpot", "jackpots", "mega-jackpot",
-        "wager", "wagering", "stake", "stakes",
-        "lottery", "lotto", "powerball", "megamillions",
-        "spins", "free-spins", "bonus-round",
-        "odds", "parlay", "handicap",
-        "livebet", "inplay", "in-play",
-    ],
-    "betting_india": [
-        "laser247", "skyexch", "diamondexch", "fairplay", "mahadev",
-        "lotus365", "gold365", "cricketbetting", "iplbetting",
-        "satta", "sattamatka", "matka",
-        "1xbet", "parimatch", "melbet", "10cric", "dafabet", "12bet",
-        "mostbet", "linebet", "megapari", "bc.game", "stake.com",
-        "khelostar", "world777", "diamondexchange",
-        "manygames", "aviator", "dailyincome", "easyprocess",
-        "idbanye", "idkeliye", "refillbonus", "norolling",
-        "visit-site", "get-your-id", "fastreliable",
-        "casino", "livecasino", "live-casino", "onlinesatta",
-    ],
-    "adult": [
-        "porn", "pornography", "pornhub", "xvideos", "xnxx", "xhamster",
-        "redtube", "youporn", "tube8", "spankbang",
-        "onlyfans", "fansly",
-        "xxx", "nsfw",
-        "escort", "escorts",
-        "hentai", "hentairead",
-        "camgirl", "cam-girl", "livecam", "webcam-sex",
-        "erotic", "erotica",
-        "nude", "nudes", "naked",
-        "sex", "sexcam", "sexchat",
-    ],
-}
 
-CONTENT_POLICY_CATEGORY_MAP = {
-    "gambling": [
-        "gambling", "gaming", "gambling (alphamountain.ai)", "betting",
-        "casino", "lottery",
-    ],
-    "adult": [
-        "pornography", "adult", "nsfw", "adult content",
-    ],
-}
 
 
 def detect_content_policy(
@@ -542,33 +603,13 @@ def detect_content_policy(
 
     if page_text:
         text_lower = page_text.lower()
-        gambling_density_keywords = [
-            "place your bet", "bet now", "deposit now", "withdraw",
-            "betting odds", "live betting", "casino bonus",
-            "spin the wheel", "play now", "win real money",
-            "jackpot winner", "free spins", "sign up bonus",
-            "cricket betting", "sports betting", "online betting",
-            "no rolling", "only service", "minimum deposit",
-            "minimum withdrawal", "withdrawal anytime",
-            "only 10 minutes", "only 30 minutes",
-            "id ke liye", "id banye", "fast reliable secure",
-            "24 7 customer support", "daily income", "easy process",
-            "genuine return", "daily plan", "refill bonus",
-            "id in less than", "get your id", "visit site",
-            "match ho ya casino", "soccer ho ya tennis",
-            "aviator ho ya", "live action",
-        ]
-        gambling_hits = sum(1 for phrase in gambling_density_keywords if phrase in text_lower)
+        gambling_hits = sum(1 for phrase in GAMBLING_DENSITY_KEYWORDS if phrase in text_lower)
         if gambling_hits >= 1:
             return "gambling", [
                 f"Content policy: Page content contains {gambling_hits} betting-related phrase(s)"
             ]
 
-        adult_density_keywords = [
-            "18 only", "18+", "over 18", "adult content",
-            "contains explicit", "mature content",
-        ]
-        adult_hits = sum(1 for phrase in adult_density_keywords if phrase in text_lower)
+        adult_hits = sum(1 for phrase in ADULT_DENSITY_KEYWORDS if phrase in text_lower)
         if adult_hits >= 2:
             return "adult", [
                 f"Content policy: Page content contains {adult_hits} adult-related phrases"

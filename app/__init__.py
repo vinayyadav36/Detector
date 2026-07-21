@@ -4,15 +4,21 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template
 
-from .config import BaseConfig
+from .config import BaseConfig, load_heuristics_lists
 from .extensions import db, csrf, limiter
 from .phishing import bp as phishing_bp
+from .phishing.heuristics import load_config_from_env
 from .security import configure_logging, configure_security
 
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(BaseConfig)
+
+    # Load heuristics lists from .env into config and override module defaults
+    load_heuristics_lists(app.config)
+    with app.app_context():
+        load_config_from_env(app.config)
 
     vt_enabled = app.config.get("VT_ENABLED", False)
     vt_key_present = bool(app.config.get("VT_API_KEY"))
