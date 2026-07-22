@@ -24,9 +24,32 @@
     <div class="radial-progress {{ data.label }}" style="--progress: {{ data.risk_score }}%;">
       <div class="radial-content">
         <span class="radial-score">{{ data.risk_score }}</span>
+        <span class="radial-label score-{{ data.label }}">{{ data.label | upper }}</span>
       </div>
     </div>
-    <div class="pill pill-{{ data.label }}" style="font-size: 1.1rem; font-weight: 700;">{{ data.label | upper }}</div>
+
+    {% set conf_level = none %}
+    {% set conf_reason = none %}
+    {% if data.features_summary and data.features_summary.page_signals %}
+      {% if data.features_summary.page_signals.fusion_assessment %}
+        {% set conf_level = data.features_summary.page_signals.fusion_assessment.confidence_level %}
+        {% set conf_reason = data.features_summary.page_signals.fusion_assessment.confidence_reason %}
+      {% elif data.features_summary.page_signals.blended_confidence %}
+        {% set conf_level = data.features_summary.page_signals.blended_confidence.confidence_level %}
+        {% set conf_reason = data.features_summary.page_signals.blended_confidence.confidence_reason %}
+      {% endif %}
+    {% endif %}
+
+    {% if conf_level %}
+    <div style="text-align: center; margin-top: 0.5rem; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
+      <div class="pill pill-{{ 'phishing' if conf_level == 'high' else ('safe' if conf_level == 'low' else 'suspicious') }}" style="font-size: 0.85rem;">
+        Confidence: {{ conf_level | title }}
+      </div>
+      <div class="muted" style="font-size: 0.8rem; max-width: 220px; line-height: 1.4;">
+        {{ conf_reason }}
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <div class="hero-details-panel">
@@ -34,13 +57,6 @@
     <div class="key-value" style="font-size: 0.95rem;">
       <div><span class="muted">Domain</span><strong style="font-size: 1.1em;">{{ data.domain }}</strong></div>
       <div><span class="muted">URL</span><span class="mono" style="word-break: break-all;">{{ data.url }}</span></div>
-      {% if data.features_summary and data.features_summary.page_signals and data.features_summary.page_signals.fusion_assessment %}
-      {% set fusion = data.features_summary.page_signals.fusion_assessment %}
-      <div><span class="muted">Confidence</span><span><strong>{{ fusion.confidence_level | title }}</strong> — {{ fusion.confidence_reason }}</span></div>
-      {% elif data.features_summary and data.features_summary.page_signals and data.features_summary.page_signals.blended_confidence %}
-      {% set conf = data.features_summary.page_signals.blended_confidence %}
-      <div><span class="muted">Confidence</span><span><strong>{{ conf.confidence_level | title }}</strong> — {{ conf.confidence_reason }}</span></div>
-      {% endif %}
       <div><span class="muted">Reachability</span><span>{{ data.reachability | replace('_', ' ') | title }}</span></div>
       <div><span class="muted">Analyzed</span><span>{{ data.created_at }}</span></div>
     </div>
@@ -55,12 +71,15 @@
     <canvas id="compositionChart"></canvas>
   </div>
 
-  <div class="key-value print-only-text" style="font-size: 0.9em; margin-top: 1rem;">
-    <div><span>Local Heuristic Risk</span><span>{{ fusion.local_risk_score }}/100</span></div>
-    <div><span>Domain Structural Risk</span><span>+{{ fusion.domain_risk_score }}</span></div>
-    <div><span>External Threat Feed Risk</span><span>+{{ fusion.external_risk_score }}</span></div>
-    <div><span>Positive Trust Offset</span><span class="score-safe">-{{ fusion.positive_trust_offset }}</span></div>
-    <div><span>Final Unified Score</span><span class="score-{{ fusion.final_label }}">{{ fusion.final_risk_score }}/100 — {{ fusion.final_label | upper }}</span></div>
+  <div class="key-value print-only-text" style="font-size: 0.9em; margin-top: 1rem; padding: 1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 0.75rem;">
+    <div><span class="muted">Local Heuristic Risk</span><strong>{{ fusion.local_risk_score }}/100</strong></div>
+    <div><span class="muted">Domain Structural Risk</span><strong class="score-suspicious">+{{ fusion.domain_risk_score }}</strong></div>
+    <div><span class="muted">External Threat Feed Risk</span><strong class="score-phishing">+{{ fusion.external_risk_score }}</strong></div>
+    <div><span class="muted">Positive Trust Offset</span><strong class="score-safe">-{{ fusion.positive_trust_offset }}</strong></div>
+    <div style="border-top: 1px solid var(--border); padding-top: 0.5rem; margin-top: 0.5rem;">
+      <span class="muted">Final Unified Score</span>
+      <strong class="score-{{ fusion.final_label }}" style="font-size: 1.1em;">{{ fusion.final_risk_score }}/100 — {{ fusion.final_label | upper }}</strong>
+    </div>
   </div>
 
   <div class="grid two-up" style="margin-top: 1.5rem;">
@@ -126,28 +145,28 @@
     {% set vt_cls = 'phishing' if vt_sig == 'flagged' else ('safe' if vt_sig == 'clean' else 'inactive') %}
     <div class="provider-card {{ vt_cls }}">
       <span class="name">VirusTotal</span>
-      <span class="status">{{ vt_sig | title }}</span>
+      <span class="status"><span class="pill pill-{{ vt_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ vt_sig | title }}</span></span>
     </div>
 
     {% set sb_sig = conf.sb_signal | default('not available') %}
     {% set sb_cls = 'phishing' if sb_sig == 'flagged' else ('safe' if sb_sig == 'clean' else 'inactive') %}
     <div class="provider-card {{ sb_cls }}">
       <span class="name">Safe Browsing</span>
-      <span class="status">{{ sb_sig | title }}</span>
+      <span class="status"><span class="pill pill-{{ sb_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ sb_sig | title }}</span></span>
     </div>
 
     {% set ipdb_sig = conf.ipdb_signal | default('not available') %}
     {% set ipdb_cls = 'phishing' if ipdb_sig == 'flagged' else ('safe' if ipdb_sig == 'clean' else 'inactive') %}
     <div class="provider-card {{ ipdb_cls }}">
       <span class="name">AbuseIPDB</span>
-      <span class="status">{{ ipdb_sig | title }}</span>
+      <span class="status"><span class="pill pill-{{ ipdb_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ ipdb_sig | title }}</span></span>
     </div>
 
     {% set us_sig = conf.us_signal | default('not available') %}
     {% set us_cls = 'phishing' if us_sig == 'flagged' else ('safe' if us_sig == 'clean' else 'inactive') %}
     <div class="provider-card {{ us_cls }}">
       <span class="name">urlscan.io</span>
-      <span class="status">{{ us_sig | title }}</span>
+      <span class="status"><span class="pill pill-{{ us_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ us_sig | title }}</span></span>
     </div>
   </div>
 </section>
@@ -163,28 +182,61 @@
       {% if dinfo.domain_trust %}
       <span class="pill pill-{{ 'phishing' if dinfo.domain_trust.verdict == 'suspicious' else 'safe' }}">Trust: {{ dinfo.domain_trust.verdict | title }}</span>
       {% endif %}
-      {% if data.features_summary.domain_info.domain_age_bucket %}
-      <span class="pill pill-{{ 'suspicious' if data.features_summary.domain_info.domain_age_bucket in ['New', 'Very New'] else 'safe' }}">Age: {{ data.features_summary.domain_info.domain_age_bucket }}</span>
-      {% endif %}
     </div>
 
-    <div class="key-value" style="font-size: 0.9em;">
-      {% if dinfo.domain_trust and dinfo.domain_trust.reason %}
-      <div><span class="muted">Trust Reason</span><span>{{ dinfo.domain_trust.reason }}</span></div>
-      {% endif %}
-      {% if data.features_summary.domain_age_days is not none %}
-      <div><span class="muted">Domain Age</span><span>{{ (data.features_summary.domain_age_days / 365) | round(1) }} years ({{ data.features_summary.domain_age_days | int }} days)</span></div>
-      {% endif %}
+    {% if dinfo.domain_trust and dinfo.domain_trust.reason %}
+    <div style="font-size: 0.85em; color: var(--muted); margin-bottom: 1.5rem; line-height: 1.4;">
+      <strong>Trust Factor:</strong> {{ dinfo.domain_trust.reason }}
+    </div>
+    {% endif %}
+
+    {% if data.features_summary.domain_age_days is not none %}
+    {% set age_days = data.features_summary.domain_age_days %}
+    {% set age_percent = (age_days / 365) * 100 %}
+    {% set age_percent = 100 if age_percent > 100 else (0 if age_percent < 0 else age_percent) %}
+
+    <div style="margin-bottom: 2rem;">
+      <h3 style="font-size: 0.95rem; margin-bottom: 0;">Domain Age</h3>
+      <div class="age-bar-container">
+        <div class="age-bar-marker" style="left: {{ age_percent }}%;"></div>
+      </div>
+      <div class="age-bar-labels">
+        <span>0</span>
+        <span>6m</span>
+        <span>1y+</span>
+      </div>
+      <div style="font-size: 0.85em; color: var(--muted); margin-top: 0.5rem;">
+        <strong>{{ (age_days / 365) | round(1) }} years ({{ age_days | int }} days)</strong> — {{ data.features_summary.domain_info.domain_age_bucket }}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="provider-grid">
+
       {% if dinfo.registrar and dinfo.registrar != 'unknown' %}
-      <div><span class="muted">Registrar</span><span>{{ dinfo.registrar }}</span></div>
+      <div class="provider-card inactive">
+        <span class="name">Registrar</span>
+        <span class="status" style="word-break: break-all;">{{ dinfo.registrar }}</span>
+      </div>
       {% endif %}
+
+      {% if data.features_summary.url_features and data.features_summary.url_features.is_suspicious_tld is defined %}
+      <div class="provider-card {{ 'suspicious' if data.features_summary.url_features.is_suspicious_tld else 'safe' }}">
+        <span class="name">TLD Status</span>
+        <span class="status">{{ 'Suspicious TLD' if data.features_summary.url_features.is_suspicious_tld else 'Standard TLD' }}</span>
+      </div>
+      {% endif %}
+
       {% if dinfo.name_servers and dinfo.name_servers | length > 0 %}
-      <div><span class="muted">Name Servers</span><span>{{ dinfo.name_servers[:2] | join(', ') }}{{ ' +' ~ (dinfo.name_servers | length - 2) ~ ' more' if dinfo.name_servers | length > 2 else '' }}</span></div>
+      <div class="provider-card inactive">
+        <span class="name">Name Servers</span>
+        <span class="status">{{ dinfo.name_servers[:2] | join(', ') }}{{ ' +' ~ (dinfo.name_servers | length - 2) ~ ' more' if dinfo.name_servers | length > 2 else '' }}</span>
+      </div>
       {% endif %}
     </div>
 
     {% if dinfo.creation_date or dinfo.expiration_date %}
-    <div class="milestone-row" style="margin-top: 1rem;">
+    <div class="milestone-row" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
       {% if dinfo.creation_date %}
       <div class="milestone"><span class="milestone-label">Registered</span><span class="milestone-value">{{ dinfo.creation_date[:10] }}</span></div>
       {% endif %}
@@ -198,31 +250,62 @@
 
   <article class="card">
     <h2>Signals &amp; Observations</h2>
-    {% if data.reasons %}
-    <div class="factors-list">
-      {% for reason in data.reasons %}
-      <div class="factor-item"><span class="factor-icon risk"></span><span>{{ reason }}</span></div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <p class="muted">No specific signals detected.</p>
-    {% endif %}
+
+    {% set grouped = {'impersonation': [], 'domain_trust': [], 'infrastructure': [], 'content': [], 'other': []} %}
+    {% for reason in data.reasons %}
+      {% set r_lower = reason | lower %}
+      {% if 'brand' in r_lower or 'impersonat' in r_lower %}
+        {% set _ = grouped['impersonation'].append(reason) %}
+      {% elif 'domain' in r_lower or 'registrar' in r_lower or 'tld' in r_lower or 'whois' in r_lower %}
+        {% set _ = grouped['domain_trust'].append(reason) %}
+      {% elif 'ssl' in r_lower or 'tls' in r_lower or 'mx ' in r_lower or 'server' in r_lower or 'ip' in r_lower or 'host' in r_lower %}
+        {% set _ = grouped['infrastructure'].append(reason) %}
+      {% elif 'page' in r_lower or 'form' in r_lower or 'script' in r_lower or 'iframe' in r_lower or 'link' in r_lower or 'content' in r_lower or 'title' in r_lower or 'favicon' in r_lower %}
+        {% set _ = grouped['content'].append(reason) %}
+      {% else %}
+        {% set _ = grouped['other'].append(reason) %}
+      {% endif %}
+    {% endfor %}
 
     {% if data.features_summary %}
       {% if data.features_summary.url_features and data.features_summary.url_features.brand_impersonation %}
-      <div class="factors-list" style="margin-top: 1rem; color: var(--danger);">
-        <div class="factor-item"><span class="factor-icon risk"></span><strong>Brand Impersonation Detected</strong></div>
-        {% if data.features_summary.brand_token_hits and data.features_summary.brand_token_hits | length > 0 %}
-        <div style="padding-left: 1.5rem; font-size: 0.85em; opacity: 0.9;">Matched tokens: {{ data.features_summary.brand_token_hits | join(', ') }}</div>
-        {% endif %}
-      </div>
+        {% set _ = grouped['impersonation'].insert(0, "Brand Impersonation Detected") %}
       {% endif %}
       {% if data.features_summary.page_signals and data.features_summary.page_signals.binary_response %}
-      <div class="factors-list" style="margin-top: 1rem; color: var(--warning);">
-        <div class="factor-item"><span class="factor-icon risk"></span><strong>Binary / Non-HTML Response</strong></div>
-        <div style="padding-left: 1.5rem; font-size: 0.85em; opacity: 0.9;">The content returned was binary or unreadable. Deep content inspection was skipped.</div>
-      </div>
+        {% set _ = grouped['content'].insert(0, "Binary / Non-HTML Response (content inspection skipped)") %}
       {% endif %}
+    {% endif %}
+
+    {% set has_groups = false %}
+    <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+    {% for g_name, g_items in [('Impersonation', grouped.impersonation), ('Domain Trust', grouped.domain_trust), ('Page & Content', grouped.content), ('Infrastructure & Network', grouped.infrastructure)] %}
+      {% if g_items | length > 0 %}
+        {% set has_groups = true %}
+        <div style="background: rgba(255,255,255,0.02); padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid var(--border);">
+          <div style="font-weight: 600; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.5rem;">{{ g_name }}</div>
+          <div class="factors-list" style="margin-top:0;">
+            {% for item in g_items %}
+              <div class="factor-item" style="font-size: 0.85em;"><span class="factor-icon risk" style="width: 12px; height: 12px;"></span><span>{{ item }}</span></div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+    </div>
+
+    {% if not has_groups and grouped.other | length == 0 %}
+      <p class="muted">No specific signals detected.</p>
+    {% endif %}
+
+    {% if data.reasons and data.reasons | length > 0 %}
+    <details style="margin-top: 1rem; background: rgba(0,0,0,0.1); padding: 0.75rem; border-radius: 0.5rem; border: 1px solid var(--border);">
+      <summary style="font-size: 0.9rem;">View Detailed Evidence (Raw List)</summary>
+      <div class="factors-list" style="margin-top: 0.75rem;">
+        {% for reason in data.reasons %}
+        <div class="factor-item" style="font-size: 0.85em;"><span class="factor-icon risk" style="width: 8px; height: 8px;"></span><span>{{ reason }}</span></div>
+        {% endfor %}
+      </div>
+    </details>
     {% endif %}
   </article>
 </section>
@@ -244,27 +327,27 @@
   {% endif %}
 
   <div class="grid two-up" style="margin-bottom: 1.5rem;">
-    <div>
+    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 1rem; border-radius: 0.75rem;">
       <h3 style="margin-top:0; font-size:1rem;">Engine Detections</h3>
       <div class="chart-container" style="height: 40px; margin-top: 0.5rem; max-width: 400px;">
         <canvas id="vtEngineChart"></canvas>
       </div>
       <div class="key-value" style="font-size:0.85rem; margin-top:0.5rem; opacity:0.9;">
-        <div><span>Total Engines</span><span>{{ vt.stats.total_engines }}</span></div>
-        <div><span>Malicious / Suspicious</span><span class="{{ 'score-phishing' if vt.stats.malicious_count > 0 else '' }}">{{ vt.stats.malicious_count }} / {{ vt.stats.suspicious_count }}</span></div>
-        <div><span>Harmless / Undetected</span><span>{{ vt.stats.harmless_count }} / {{ vt.stats.undetected_count }}</span></div>
+        <div><span class="muted">Total Engines</span><strong>{{ vt.stats.total_engines }}</strong></div>
+        <div><span class="muted">Malicious / Suspicious</span><strong class="{{ 'score-phishing' if vt.stats.malicious_count > 0 else '' }}">{{ vt.stats.malicious_count }} / {{ vt.stats.suspicious_count }}</strong></div>
+        <div><span class="muted">Harmless / Undetected</span><strong>{{ vt.stats.harmless_count }} / {{ vt.stats.undetected_count }}</strong></div>
       </div>
     </div>
 
-    <div>
+    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 1rem; border-radius: 0.75rem;">
       <h3 style="margin-top:0; font-size:1rem;">Community Votes</h3>
       {% if vt.votes %}
       <div class="chart-container" style="height: 40px; margin-top: 0.5rem; max-width: 400px;">
         <canvas id="vtVotesChart"></canvas>
       </div>
       <div class="key-value" style="font-size:0.85rem; margin-top:0.5rem; opacity:0.9;">
-        <div><span>Harmless</span><span class="score-safe">{{ vt.votes.harmless }}</span></div>
-        <div><span>Malicious</span><span class="{{ 'score-phishing' if vt.votes.malicious > 0 else '' }}">{{ vt.votes.malicious }}</span></div>
+        <div><span class="muted">Harmless</span><strong class="score-safe">{{ vt.votes.harmless }}</strong></div>
+        <div><span class="muted">Malicious</span><strong class="{{ 'score-phishing' if vt.votes.malicious > 0 else '' }}">{{ vt.votes.malicious }}</strong></div>
       </div>
       {% else %}
       <p class="muted" style="font-size:0.85rem;">No community votes recorded.</p>
@@ -272,21 +355,26 @@
     </div>
   </div>
 
+  {% if vt.dates and (vt.dates.first_submission_date or vt.dates.last_analysis_date) %}
+  <div class="milestone-row" style="margin-bottom: 1.5rem;">
+    {% if vt.dates.first_submission_date %}
+    <div class="milestone"><span class="milestone-label">First Submitted</span><span class="milestone-value">{{ vt.dates.first_submission_date }}</span></div>
+    {% endif %}
+    {% if vt.dates.last_submission_date %}
+    <div class="milestone"><span class="milestone-label">Last Submitted</span><span class="milestone-value">{{ vt.dates.last_submission_date }}</span></div>
+    {% endif %}
+    {% if vt.dates.last_analysis_date %}
+    <div class="milestone"><span class="milestone-label">Last Analysis</span><span class="milestone-value">{{ vt.dates.last_analysis_date }}</span></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="key-value">
 
     {% if vt.serving_ip %}
     <div><span>Serving IP</span><span class="mono">{{ vt.serving_ip }}</span></div>
     {% endif %}
 
-    {% if vt.dates and vt.dates.first_submission_date %}
-    <div><span>First Submitted</span><span>{{ vt.dates.first_submission_date }}</span></div>
-    {% endif %}
-    {% if vt.dates and vt.dates.last_submission_date %}
-    <div><span>Last Submitted</span><span>{{ vt.dates.last_submission_date }}</span></div>
-    {% endif %}
-    {% if vt.dates and vt.dates.last_analysis_date %}
-    <div><span>Last Analysis</span><span>{{ vt.dates.last_analysis_date }}</span></div>
-    {% endif %}
     {% if vt.final_url %}
     <div><span>Final URL</span><span class="mono">{{ vt.final_url }}</span></div>
     {% endif %}
@@ -384,17 +472,19 @@
     {% endif %}
 
     {% if vt.top_engine_hits and vt.top_engine_hits|length > 0 %}
-    <div><span>Top Flagged Engines</span>
-      <span>
-        <ul class="bullet-list" style="margin:0; padding-left:1.2rem;">
-          {% for engine in vt.top_engine_hits %}
-          <li><strong>{{ engine.engine_name }}</strong> — {{ engine.category }} — {{ engine.result }}</li>
-          {% endfor %}
-        </ul>
-        {% if vt.additional_flagged_engines and vt.additional_flagged_engines > 0 %}
-        <small class="muted" style="display:block; margin-top:0.5rem;">Additional flagged engines not shown: {{ vt.additional_flagged_engines }}</small>
-        {% endif %}
-      </span>
+    <div style="display: block; border-bottom: 1px solid var(--border); padding: 0.5rem 0;">
+      <div style="margin-bottom: 0.5rem;"><span>Top Flagged Engines</span></div>
+      <div class="factors-list">
+        {% for engine in vt.top_engine_hits %}
+        <div class="factor-item" style="background: rgba(255,255,255,0.02); padding: 0.4rem 0.6rem; border-radius: 0.5rem; display: flex; justify-content: space-between;">
+          <span><strong>{{ engine.engine_name }}</strong></span>
+          <span style="font-size: 0.85em;"><span class="score-phishing">{{ engine.category }}</span> — {{ engine.result }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if vt.additional_flagged_engines and vt.additional_flagged_engines > 0 %}
+      <div class="muted" style="font-size: 0.85em; margin-top: 0.5rem;">+ {{ vt.additional_flagged_engines }} additional flagged engines not shown.</div>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -705,12 +795,29 @@
 
 {% if data.redirect_chain and data.redirect_chain|length > 1 %}
 <section class="card">
-  <h2>Redirect Chain</h2>
-  <ol class="bullet-list">
+  <h2>Redirect Chain ({{ data.redirect_chain|length - 1 }} Hops)</h2>
+  <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
     {% for url in data.redirect_chain %}
-    <li class="mono">{{ url }}</li>
+    <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 24px; padding-top: 0.2rem;">
+        <div style="width: 12px; height: 12px; border-radius: 50%; background: {{ 'var(--success)' if loop.first else ('var(--danger)' if loop.last else 'var(--warning)') }};"></div>
+        {% if not loop.last %}
+        <div style="width: 2px; height: 20px; background: var(--border);"></div>
+        {% endif %}
+      </div>
+      <div style="padding-bottom: 0.5rem; word-break: break-all;">
+        <span class="mono" style="font-size: 0.85em; opacity: {{ '1' if loop.last else '0.85' }}; font-weight: {{ '600' if loop.last else 'normal' }};">{{ url }}</span>
+        {% if loop.first %}
+        <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Initial Request</div>
+        {% elif loop.last %}
+        <div class="score-{{ 'phishing' if data.risk_score >= 70 else ('suspicious' if data.risk_score >= 40 else 'safe') }}" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Final Destination</div>
+        {% else %}
+        <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Hop {{ loop.index0 }}</div>
+        {% endif %}
+      </div>
+    </div>
     {% endfor %}
-  </ol>
+  </div>
 </section>
 {% endif %}
 
@@ -794,10 +901,10 @@ document.addEventListener('DOMContentLoaded', function() {
       data: {
         labels: ['Risk Contribution'],
         datasets: [
-          { label: 'Local Heuristics', data: [local], backgroundColor: '#f59e0b', stack: 'Stack 0' },
-          { label: 'Domain Structural', data: [domain], backgroundColor: '#ef4444', stack: 'Stack 0' },
+          { label: 'Local Heuristics', data: [local], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim() || '#f59e0b', stack: 'Stack 0' },
+          { label: 'Domain Structural', data: [domain], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#ef4444', stack: 'Stack 0' },
           { label: 'External Threat', data: [external], backgroundColor: '#991b1b', stack: 'Stack 0' },
-          { label: 'Trust Mitigations', data: [-trust], backgroundColor: '#22c55e', stack: 'Stack 0' }
+          { label: 'Trust Mitigations', data: [-trust], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#22c55e', stack: 'Stack 0' }
         ]
       },
       options: {
@@ -809,7 +916,21 @@ document.addEventListener('DOMContentLoaded', function() {
           y: { stacked: true, display: false }
         },
         plugins: {
-          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11, family: 'Inter, Arial, sans-serif' }, color: isDark ? '#9eb0cb' : '#51627f' } },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                  label += ': ';
+                }
+                if (context.parsed.x !== null) {
+                  label += context.parsed.x;
+                }
+                return label;
+              }
+            }
+          }
         }
       }
     });
@@ -828,9 +949,9 @@ document.addEventListener('DOMContentLoaded', function() {
       data: {
         labels: ['Engines'],
         datasets: [
-          { label: 'Malicious', data: [malicious], backgroundColor: '#ef4444', stack: 'Stack 0' },
-          { label: 'Suspicious', data: [suspicious], backgroundColor: '#f59e0b', stack: 'Stack 0' },
-          { label: 'Harmless', data: [harmless], backgroundColor: '#22c55e', stack: 'Stack 0' },
+          { label: 'Malicious', data: [malicious], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#ef4444', stack: 'Stack 0' },
+          { label: 'Suspicious', data: [suspicious], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim() || '#f59e0b', stack: 'Stack 0' },
+          { label: 'Harmless', data: [harmless], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#22c55e', stack: 'Stack 0' },
           { label: 'Undetected', data: [undetected], backgroundColor: isDark ? '#22304f' : '#d6deeb', stack: 'Stack 0' }
         ]
       },
@@ -862,8 +983,8 @@ document.addEventListener('DOMContentLoaded', function() {
           data: {
             labels: ['Votes'],
             datasets: [
-              { label: 'Malicious', data: [votesMalicious], backgroundColor: '#ef4444', stack: 'Stack 0' },
-              { label: 'Harmless', data: [votesHarmless], backgroundColor: '#22c55e', stack: 'Stack 0' }
+              { label: 'Malicious', data: [votesMalicious], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#ef4444', stack: 'Stack 0' },
+              { label: 'Harmless', data: [votesHarmless], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#22c55e', stack: 'Stack 0' }
             ]
           },
           options: {
