@@ -195,6 +195,34 @@ details summary:hover { opacity: .8; }
 .radial-progress.suspicious { --fill-color: var(--warning); }
 .radial-progress.phishing { --fill-color: var(--danger); }
 
+/* Progress / Age Bar */
+.age-bar-container {
+  height: 12px;
+  width: 100%;
+  background: linear-gradient(to right, var(--danger) 0%, var(--danger) 10%, var(--warning) 10%, var(--warning) 30%, var(--success) 30%, var(--success) 100%);
+  border-radius: 999px;
+  position: relative;
+  margin: 1.5rem 0 0.5rem;
+  opacity: 0.8;
+}
+.age-bar-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 4px;
+  background: var(--text);
+  border-radius: 2px;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  transition: left 0.3s ease;
+}
+.age-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
 /* Provider Badges & Grids */
 .provider-grid {
   display: grid;
@@ -215,7 +243,8 @@ details summary:hover { opacity: .8; }
 .provider-card.safe { border-left: 4px solid var(--success); }
 .provider-card.suspicious { border-left: 4px solid var(--warning); }
 .provider-card.phishing { border-left: 4px solid var(--danger); }
-.provider-card.inactive { border-left: 4px solid var(--muted); opacity: 0.7; }
+.provider-card.inactive { border-left: 4px solid var(--border); opacity: 0.8; }
+.pill-inactive { background: rgba(158, 176, 203, 0.15); color: var(--muted); border: 1px solid var(--border); }
 
 /* Timeline / Milestones */
 .milestone-row {
