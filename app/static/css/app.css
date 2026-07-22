@@ -156,20 +156,24 @@ details summary:hover { opacity: .8; }
 /* CSS Radial Progress */
 .radial-progress {
   position: relative;
-  width: 140px;
-  height: 140px;
+  width: 150px;
+  height: 150px;
   border-radius: 50%;
   background: conic-gradient(var(--fill-color, var(--accent)) var(--progress, 0%), var(--border) 0%);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+  transition: transform 0.3s ease;
+}
+.radial-progress:hover {
+  transform: scale(1.02);
 }
 .radial-progress::before {
   content: "";
   position: absolute;
-  width: 116px;
-  height: 116px;
+  width: 124px;
+  height: 124px;
   border-radius: 50%;
   background: var(--card);
 }
@@ -182,7 +186,7 @@ details summary:hover { opacity: .8; }
   line-height: 1.2;
 }
 .radial-score {
-  font-size: 2.2rem;
+  font-size: 2.4rem;
   font-weight: 800;
   color: var(--text);
 }
@@ -190,30 +194,33 @@ details summary:hover { opacity: .8; }
   font-size: 0.85rem;
   font-weight: 600;
   text-transform: uppercase;
+  margin-top: 0.2rem;
 }
 .radial-progress.safe { --fill-color: var(--success); }
 .radial-progress.suspicious { --fill-color: var(--warning); }
 .radial-progress.phishing { --fill-color: var(--danger); }
 
-/* Progress / Age Bar */
+/* Progress / Age Bar - Red (<90d), Yellow (90-365d), Green (>365d) on 2yr scale (730d) */
 .age-bar-container {
   height: 12px;
   width: 100%;
-  background: linear-gradient(to right, var(--danger) 0%, var(--danger) 10%, var(--warning) 10%, var(--warning) 30%, var(--success) 30%, var(--success) 100%);
+  background: linear-gradient(to right, var(--danger) 0%, var(--danger) 12.3%, var(--warning) 12.3%, var(--warning) 50%, var(--success) 50%, var(--success) 100%);
   border-radius: 999px;
   position: relative;
   margin: 1.5rem 0 0.5rem;
-  opacity: 0.8;
+  opacity: 0.9;
+  border: 1px solid rgba(255,255,255,0.05);
 }
 .age-bar-marker {
   position: absolute;
   top: -4px;
   bottom: -4px;
-  width: 4px;
+  width: 6px;
   background: var(--text);
-  border-radius: 2px;
-  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  border-radius: 3px;
+  box-shadow: 0 0 6px rgba(0,0,0,0.6);
   transition: left 0.3s ease;
+  border: 1px solid var(--card);
 }
 .age-bar-labels {
   display: flex;
@@ -221,6 +228,7 @@ details summary:hover { opacity: .8; }
   font-size: 0.75rem;
   color: var(--muted);
   margin-top: 0.25rem;
+  padding: 0 0.2rem;
 }
 
 /* Provider Badges & Grids */
@@ -237,14 +245,19 @@ details summary:hover { opacity: .8; }
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.provider-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
 }
 .provider-card .name { font-weight: 600; font-size: 0.9rem; }
 .provider-card .status { font-size: 0.85rem; color: var(--muted); }
 .provider-card.safe { border-left: 4px solid var(--success); }
 .provider-card.suspicious { border-left: 4px solid var(--warning); }
 .provider-card.phishing { border-left: 4px solid var(--danger); }
-.provider-card.inactive { border-left: 4px solid var(--border); opacity: 0.8; }
-.pill-inactive { background: rgba(158, 176, 203, 0.15); color: var(--muted); border: 1px solid var(--border); }
+.provider-card.inactive { border-left: 4px solid var(--muted); opacity: 0.7; }
+.pill-inactive { background: rgba(81, 98, 127, 0.16); color: var(--muted); border: 1px solid var(--border); }
 
 /* Timeline / Milestones */
 .milestone-row {
@@ -296,17 +309,25 @@ details summary:hover { opacity: .8; }
 
 @media print {
   .chart-container, canvas { display: none !important; }
-}
-
-/* Print fallback text handling */
-.print-only-text {
-  /* In standard web view, we can display this text block since the user requested:
-     "do not remove every textual of other information... every thing must be present along with the visual presentation"
-     However, to not clutter the composition, we can just let it display normally.
-  */
-}
-
-@media print {
-  .chart-container, canvas { display: none !important; }
+  .age-bar-marker { display: none !important; }
+  .age-bar-container { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .radial-progress { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .pill { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .provider-card { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .factor-icon { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  details { break-inside: avoid; }
+  details[open] > summary ~ * { display: block !important; }
   .print-only-text { display: block !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-delay: -1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    background-attachment: scroll !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
 }

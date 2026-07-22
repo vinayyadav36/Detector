@@ -20,8 +20,8 @@
 {% endif %}
 
 <section class="card dashboard-hero">
-  <div class="hero-score-panel">
-    <div class="radial-progress {{ data.label }}" style="--progress: {{ data.risk_score }}%;">
+  <div class="hero-score-panel" style="padding: 1.25rem; border-radius: 0.75rem; background: rgba(255,255,255,0.01); border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <div class="radial-progress {{ data.label }}" style="--progress: {{ data.risk_score }}%;" role="meter" aria-valuenow="{{ data.risk_score }}" aria-valuemin="0" aria-valuemax="100" aria-label="Risk score: {{ data.risk_score }} out of 100, {{ data.label }}">
       <div class="radial-content">
         <span class="radial-score">{{ data.risk_score }}</span>
         <span class="radial-label score-{{ data.label }}">{{ data.label | upper }}</span>
@@ -41,13 +41,13 @@
     {% endif %}
 
     {% if conf_level %}
-    <div style="text-align: center; margin-top: 0.5rem; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
-      <div class="pill pill-{{ 'phishing' if conf_level == 'high' else ('safe' if conf_level == 'low' else 'suspicious') }}" style="font-size: 0.85rem;">
-        Confidence: {{ conf_level | title }}
-      </div>
-      <div class="muted" style="font-size: 0.8rem; max-width: 220px; line-height: 1.4;">
+    <div style="text-align: center; margin-top: 0.75rem; display: flex; flex-direction: column; align-items: center; gap: 0.4rem;">
+      <span class="pill pill-{{ 'phishing' if conf_level == 'high' else ('safe' if conf_level == 'low' else 'suspicious') }}" style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.25rem 0.6rem;">
+        {{ conf_level }} Confidence
+      </span>
+      <small class="muted" style="font-size: 0.75rem; max-width: 200px; line-height: 1.3; display: block;">
         {{ conf_reason }}
-      </div>
+      </small>
     </div>
     {% endif %}
   </div>
@@ -71,7 +71,7 @@
     <canvas id="compositionChart"></canvas>
   </div>
 
-  <div class="key-value print-only-text" style="font-size: 0.9em; margin-top: 1rem; padding: 1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 0.75rem;">
+  <div class="key-value" style="font-size: 0.9em; margin-top: 1rem; padding: 1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 0.75rem;">
     <div><span class="muted">Local Heuristic Risk</span><strong>{{ fusion.local_risk_score }}/100</strong></div>
     <div><span class="muted">Domain Structural Risk</span><strong class="score-suspicious">+{{ fusion.domain_risk_score }}</strong></div>
     <div><span class="muted">External Threat Feed Risk</span><strong class="score-phishing">+{{ fusion.external_risk_score }}</strong></div>
@@ -141,32 +141,52 @@
   <div class="provider-grid">
     {% set conf = data.features_summary.page_signals.blended_confidence or {} %}
 
+    {# VirusTotal #}
     {% set vt_sig = conf.vt_signal | default('not available') %}
-    {% set vt_cls = 'phishing' if vt_sig == 'flagged' else ('safe' if vt_sig == 'clean' else 'inactive') %}
+    {% set vt_cls = 'phishing' if vt_sig == 'flagged' else ('suspicious' if vt_sig == 'suspicious' else ('safe' if vt_sig == 'clean' else 'inactive')) %}
     <div class="provider-card {{ vt_cls }}">
       <span class="name">VirusTotal</span>
-      <span class="status"><span class="pill pill-{{ vt_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ vt_sig | title }}</span></span>
+      <span class="status">
+        <span class="pill pill-{{ vt_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+          {{ 'Flagged' if vt_sig == 'flagged' else ('Suspicious' if vt_sig == 'suspicious' else ('Clean' if vt_sig == 'clean' else 'Inactive')) }}
+        </span>
+      </span>
     </div>
 
+    {# Safe Browsing #}
     {% set sb_sig = conf.sb_signal | default('not available') %}
-    {% set sb_cls = 'phishing' if sb_sig == 'flagged' else ('safe' if sb_sig == 'clean' else 'inactive') %}
+    {% set sb_cls = 'phishing' if sb_sig == 'flagged' else ('suspicious' if sb_sig == 'suspicious' else ('safe' if sb_sig == 'clean' else 'inactive')) %}
     <div class="provider-card {{ sb_cls }}">
       <span class="name">Safe Browsing</span>
-      <span class="status"><span class="pill pill-{{ sb_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ sb_sig | title }}</span></span>
+      <span class="status">
+        <span class="pill pill-{{ sb_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+          {{ 'Flagged' if sb_sig == 'flagged' else ('Suspicious' if sb_sig == 'suspicious' else ('Clean' if sb_sig == 'clean' else 'Inactive')) }}
+        </span>
+      </span>
     </div>
 
+    {# AbuseIPDB #}
     {% set ipdb_sig = conf.ipdb_signal | default('not available') %}
-    {% set ipdb_cls = 'phishing' if ipdb_sig == 'flagged' else ('safe' if ipdb_sig == 'clean' else 'inactive') %}
+    {% set ipdb_cls = 'phishing' if ipdb_sig == 'flagged' else ('suspicious' if ipdb_sig == 'suspicious' else ('safe' if ipdb_sig == 'clean' else 'inactive')) %}
     <div class="provider-card {{ ipdb_cls }}">
       <span class="name">AbuseIPDB</span>
-      <span class="status"><span class="pill pill-{{ ipdb_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ ipdb_sig | title }}</span></span>
+      <span class="status">
+        <span class="pill pill-{{ ipdb_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+          {{ 'Flagged' if ipdb_sig == 'flagged' else ('Suspicious' if ipdb_sig == 'suspicious' else ('Clean' if ipdb_sig == 'clean' else 'Inactive')) }}
+        </span>
+      </span>
     </div>
 
+    {# urlscan.io #}
     {% set us_sig = conf.us_signal | default('not available') %}
-    {% set us_cls = 'phishing' if us_sig == 'flagged' else ('safe' if us_sig == 'clean' else 'inactive') %}
+    {% set us_cls = 'phishing' if us_sig == 'flagged' else ('suspicious' if us_sig == 'suspicious' else ('safe' if us_sig == 'clean' else 'inactive')) %}
     <div class="provider-card {{ us_cls }}">
       <span class="name">urlscan.io</span>
-      <span class="status"><span class="pill pill-{{ us_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">{{ us_sig | title }}</span></span>
+      <span class="status">
+        <span class="pill pill-{{ us_cls }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+          {{ 'Flagged' if us_sig == 'flagged' else ('Suspicious' if us_sig == 'suspicious' else ('Clean' if us_sig == 'clean' else 'Inactive')) }}
+        </span>
+      </span>
     </div>
   </div>
 </section>
@@ -180,7 +200,9 @@
 
     <div style="display:flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem;">
       {% if dinfo.domain_trust %}
-      <span class="pill pill-{{ 'phishing' if dinfo.domain_trust.verdict == 'suspicious' else 'safe' }}">Trust: {{ dinfo.domain_trust.verdict | title }}</span>
+      <span class="pill pill-{{ 'phishing' if dinfo.domain_trust.verdict == 'suspicious' else 'safe' }}" style="font-weight: bold;">
+        Domain Trust: {{ dinfo.domain_trust.verdict | title }}
+      </span>
       {% endif %}
     </div>
 
@@ -191,46 +213,75 @@
     {% endif %}
 
     {% if data.features_summary.domain_age_days is not none %}
-    {% set age_days = data.features_summary.domain_age_days %}
-    {% set age_percent = (age_days / 365) * 100 %}
+    {% set age_days = data.features_summary.domain_age_days | default(0) | int %}
+    {# Scale bar to 2 years (730 days) to represent established age zones #}
+    {% set age_percent = (age_days / 730) * 100 %}
     {% set age_percent = 100 if age_percent > 100 else (0 if age_percent < 0 else age_percent) %}
 
-    <div style="margin-bottom: 2rem;">
-      <h3 style="font-size: 0.95rem; margin-bottom: 0;">Domain Age</h3>
+    <div style="margin-bottom: 2rem; background: rgba(255,255,255,0.01); border: 1px solid var(--border); padding: 1rem; border-radius: 0.75rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 0.95rem; margin: 0;">Domain Age</h3>
+        <span class="pill pill-{{ 'phishing' if age_days < 90 else ('suspicious' if age_days <= 365 else 'safe') }}" style="font-size: 0.75rem; font-weight: bold;">
+          {{ 'High Risk' if age_days < 90 else ('Moderate Risk' if age_days <= 365 else 'Low Concern') }}
+        </span>
+      </div>
       <div class="age-bar-container">
         <div class="age-bar-marker" style="left: {{ age_percent }}%;"></div>
       </div>
       <div class="age-bar-labels">
-        <span>0</span>
-        <span>6m</span>
-        <span>1y+</span>
+        <span>0d</span>
+        <span>90d (High Risk)</span>
+        <span>1y (Moderate)</span>
+        <span>2y+ (Established)</span>
       </div>
-      <div style="font-size: 0.85em; color: var(--muted); margin-top: 0.5rem;">
-        <strong>{{ (age_days / 365) | round(1) }} years ({{ age_days | int }} days)</strong> — {{ data.features_summary.domain_info.domain_age_bucket }}
+      <div style="font-size: 0.85em; color: var(--muted); margin-top: 0.5rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+        <span>Current: <strong>{{ age_days }} days</strong> (~{{ (age_days / 365) | round(1) }} years)</span>
+        <span>Bucket: <strong>{{ data.features_summary.domain_info.domain_age_bucket | default('unknown') }}</strong></span>
       </div>
     </div>
     {% endif %}
 
-    <div class="provider-grid">
-
+    <div class="provider-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
       {% if dinfo.registrar and dinfo.registrar != 'unknown' %}
       <div class="provider-card inactive">
-        <span class="name">Registrar</span>
-        <span class="status" style="word-break: break-all;">{{ dinfo.registrar }}</span>
+        <span class="name" style="font-size: 0.8rem;">Registrar</span>
+        <span class="status mono" style="word-break: break-all; font-size: 0.8rem;">{{ dinfo.registrar }}</span>
       </div>
       {% endif %}
 
-      {% if data.features_summary.url_features and data.features_summary.url_features.is_suspicious_tld is defined %}
-      <div class="provider-card {{ 'suspicious' if data.features_summary.url_features.is_suspicious_tld else 'safe' }}">
-        <span class="name">TLD Status</span>
-        <span class="status">{{ 'Suspicious TLD' if data.features_summary.url_features.is_suspicious_tld else 'Standard TLD' }}</span>
+      {% if data.features_summary.url_features and data.features_summary.url_features.phishing_tld is defined %}
+      {% set has_tld_issue = data.features_summary.url_features.phishing_tld | int == 1 %}
+      <div class="provider-card {{ 'phishing' if has_tld_issue else 'safe' }}">
+        <span class="name" style="font-size: 0.8rem;">TLD Status</span>
+        <span class="status">
+          <span class="pill pill-{{ 'phishing' if has_tld_issue else 'safe' }}" style="font-size: 0.7rem; padding: 0.15rem 0.4rem; font-weight: bold;">
+            {{ 'Suspicious' if has_tld_issue else 'Standard' }}
+          </span>
+        </span>
       </div>
       {% endif %}
 
-      {% if dinfo.name_servers and dinfo.name_servers | length > 0 %}
-      <div class="provider-card inactive">
-        <span class="name">Name Servers</span>
-        <span class="status">{{ dinfo.name_servers[:2] | join(', ') }}{{ ' +' ~ (dinfo.name_servers | length - 2) ~ ' more' if dinfo.name_servers | length > 2 else '' }}</span>
+      {% if data.features_summary.url_features and data.features_summary.url_features.ssl_issues is defined %}
+      {% set has_ssl_issue = data.features_summary.url_features.ssl_issues | int == 1 %}
+      <div class="provider-card {{ 'phishing' if has_ssl_issue else 'safe' }}">
+        <span class="name" style="font-size: 0.8rem;">SSL Security</span>
+        <span class="status">
+          <span class="pill pill-{{ 'phishing' if has_ssl_issue else 'safe' }}" style="font-size: 0.7rem; padding: 0.15rem 0.4rem; font-weight: bold;">
+            {{ 'Free/Weak' if has_ssl_issue else 'Valid/Secure' }}
+          </span>
+        </span>
+      </div>
+      {% endif %}
+
+      {% if data.features_summary.url_features and data.features_summary.url_features.dns_issues is defined %}
+      {% set has_dns_issue = data.features_summary.url_features.dns_issues | int == 1 %}
+      <div class="provider-card {{ 'phishing' if has_dns_issue else 'safe' }}">
+        <span class="name" style="font-size: 0.8rem;">MX Record</span>
+        <span class="status">
+          <span class="pill pill-{{ 'phishing' if has_dns_issue else 'safe' }}" style="font-size: 0.7rem; padding: 0.15rem 0.4rem; font-weight: bold;">
+            {{ 'Missing' if has_dns_issue else 'Configured' }}
+          </span>
+        </span>
       </div>
       {% endif %}
     </div>
@@ -278,14 +329,27 @@
 
     {% set has_groups = false %}
     <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
-    {% for g_name, g_items in [('Impersonation', grouped.impersonation), ('Domain Trust', grouped.domain_trust), ('Page & Content', grouped.content), ('Infrastructure & Network', grouped.infrastructure)] %}
+    {% for g_name, g_items, g_sev in [
+      ('Impersonation', grouped.impersonation, 'danger'),
+      ('Domain Trust', grouped.domain_trust, 'warning'),
+      ('Page & Content', grouped.content, 'warning'),
+      ('Infrastructure & Network', grouped.infrastructure, 'info')
+    ] %}
       {% if g_items | length > 0 %}
         {% set has_groups = true %}
-        <div style="background: rgba(255,255,255,0.02); padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid var(--border);">
-          <div style="font-weight: 600; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.5rem;">{{ g_name }}</div>
-          <div class="factors-list" style="margin-top:0;">
+        <div style="background: rgba(255,255,255,0.02); padding: 0.85rem 1rem; border-radius: 0.75rem; border: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span style="font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);">{{ g_name }}</span>
+            <span class="pill pill-{{ 'phishing' if g_sev == 'danger' else ('suspicious' if g_sev == 'warning' else 'inactive') }}" style="font-size: 0.7rem; padding: 0.1rem 0.4rem; font-weight: bold;">
+              {{ g_items | length }} Flag{{ 's' if g_items | length > 1 else '' }}
+            </span>
+          </div>
+          <div class="factors-list" style="margin-top:0; gap: 0.5rem;">
             {% for item in g_items %}
-              <div class="factor-item" style="font-size: 0.85em;"><span class="factor-icon risk" style="width: 12px; height: 12px;"></span><span>{{ item }}</span></div>
+              <div class="factor-item" style="font-size: 0.85em; align-items: flex-start;">
+                <span class="factor-icon risk" style="width: 10px; height: 10px; margin-top: 3px; background-color: {{ 'var(--danger)' if (g_sev == 'danger' or 'high' in item|lower or 'critical' in item|lower or 'violation' in item|lower) else 'var(--warning)' }};"></span>
+                <span style="line-height: 1.3;">{{ item }}</span>
+              </div>
             {% endfor %}
           </div>
         </div>
@@ -302,12 +366,125 @@
       <summary style="font-size: 0.9rem;">View Detailed Evidence (Raw List)</summary>
       <div class="factors-list" style="margin-top: 0.75rem;">
         {% for reason in data.reasons %}
-        <div class="factor-item" style="font-size: 0.85em;"><span class="factor-icon risk" style="width: 8px; height: 8px;"></span><span>{{ reason }}</span></div>
+        <div class="factor-item" style="font-size: 0.85em;"><span class="factor-icon risk" style="width: 8px; height: 8px; background-color: var(--danger);"></span><span>{{ reason }}</span></div>
         {% endfor %}
       </div>
     </details>
     {% endif %}
   </article>
+
+  {% if data.features_summary and data.features_summary.page_signals %}
+  {% set psig = data.features_summary.page_signals %}
+  <article class="card" style="grid-column: span 2;">
+    <h2>Page Content Trust Indicators</h2>
+    <p class="muted" style="font-size: 0.85em; margin-bottom: 1.25rem;">
+      Heuristics extracted directly from the HTML content and response headers of the primary page.
+    </p>
+    
+    <div class="provider-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+      
+      {# HTTPS #}
+      {% set has_https = data.features_summary.url_features.uses_https | default(0) | int == 1 %}
+      <div class="provider-card {{ 'safe' if has_https else 'phishing' }}">
+        <span class="name">Secure Transport (HTTPS)</span>
+        <span class="status">
+          <span class="pill pill-{{ 'safe' if has_https else 'phishing' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ 'HTTPS Active' if has_https else 'Unencrypted (HTTP)' }}
+          </span>
+        </span>
+      </div>
+
+      {# Password field #}
+      {% set has_pass = psig.has_password_field | default(0) | int == 1 %}
+      <div class="provider-card {{ 'phishing' if has_pass else 'safe' }}">
+        <span class="name">Credential Collection</span>
+        <span class="status">
+          <span class="pill pill-{{ 'phishing' if has_pass else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ 'Password Inputs Found' if has_pass else 'No Password Inputs' }}
+          </span>
+        </span>
+      </div>
+
+      {# External Form Action #}
+      {% set ext_form = psig.external_form_action | default(0) | int == 1 %}
+      <div class="provider-card {{ 'phishing' if ext_form else 'safe' }}">
+        <span class="name">Form Actions (Submissions)</span>
+        <span class="status">
+          <span class="pill pill-{{ 'phishing' if ext_form else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ 'External Submissions' if ext_form else 'Internal/Local Only' }}
+          </span>
+        </span>
+      </div>
+
+      {# Iframes #}
+      {% set iframe_cnt = psig.iframe_count | default(0) | int %}
+      <div class="provider-card {{ 'suspicious' if iframe_cnt > 0 else 'safe' }}">
+        <span class="name">Embedded Frames (Iframes)</span>
+        <span class="status">
+          <span class="pill pill-{{ 'suspicious' if iframe_cnt > 0 else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ iframe_cnt }} frame(s) embedded
+          </span>
+        </span>
+      </div>
+
+      {# Scripts #}
+      {% set script_cnt = psig.external_script_count | default(0) | int %}
+      <div class="provider-card {{ 'suspicious' if script_cnt > 3 else 'safe' }}">
+        <span class="name">External Scripts Loaded</span>
+        <span class="status">
+          <span class="pill pill-{{ 'suspicious' if script_cnt > 3 else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ script_cnt }} script(s) loaded
+          </span>
+        </span>
+      </div>
+
+      {# Favicon #}
+      {% set missing_fav = psig.missing_favicon | default(1) | int == 1 %}
+      <div class="provider-card {{ 'suspicious' if missing_fav else 'safe' }}">
+        <span class="name">Website Icon (Favicon)</span>
+        <span class="status">
+          <span class="pill pill-{{ 'suspicious' if missing_fav else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ 'Missing Icon' if missing_fav else 'Icon Present' }}
+          </span>
+        </span>
+      </div>
+
+      {# Contact info #}
+      {% set missing_contact = psig.no_contact_info | default(1) | int == 1 %}
+      <div class="provider-card {{ 'suspicious' if missing_contact else 'safe' }}">
+        <span class="name">Company Contact Info</span>
+        <span class="status">
+          <span class="pill pill-{{ 'suspicious' if missing_contact else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ 'No Contact Info' if missing_contact else 'Contact Info Identified' }}
+          </span>
+        </span>
+      </div>
+
+      {# Privacy Policy #}
+      {% set missing_privacy = psig.no_privacy_policy_link | default(1) | int == 1 %}
+      <div class="provider-card {{ 'suspicious' if missing_privacy else 'safe' }}">
+        <span class="name">Privacy Policy Link</span>
+        <span class="status">
+          <span class="pill pill-{{ 'suspicious' if missing_privacy else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ 'No Policy Found' if missing_privacy else 'Policy Link Found' }}
+          </span>
+        </span>
+      </div>
+
+      {# Copyright #}
+      {% set outdated_copy = psig.copyright_year_outdated | default(0) | int == 1 %}
+      <div class="provider-card {{ 'suspicious' if outdated_copy else 'safe' }}">
+        <span class="name">Copyright Status</span>
+        <span class="status">
+          <span class="pill pill-{{ 'suspicious' if outdated_copy else 'safe' }}" style="font-size: 0.75rem; padding: 0.2rem 0.5rem; font-weight: bold;">
+            {{ 'Outdated / Mismatched' if outdated_copy else 'Current / Valid' }}
+          </span>
+        </span>
+      </div>
+
+    </div>
+  </article>
+  {% endif %}
 </section>
 
 {% if data.features_summary and data.features_summary.page_signals and data.features_summary.page_signals.vt_summary %}
@@ -316,194 +493,159 @@
 <section class="card">
   <h2>VirusTotal Enrichment</h2>
 
-  {% if vt.verdict %}
-  <div style="display:flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-    <span class="pill pill-{{ 'phishing' if vt.stats.malicious_count > 0 else ('suspicious' if vt.stats.suspicious_count > 0 else 'safe') }}" style="font-size:1rem;">{{ vt.verdict.detection_verdict }}</span>
-    {% if vt.verdict.category_context %}
-    <span class="pill">{{ vt.verdict.category_context }}</span>
-    {% endif %}
-    <span class="pill">{{ vt.verdict.reputation_context }} (Reputation: {{ vt.reputation }})</span>
-  </div>
-  {% endif %}
-
-  <div class="grid two-up" style="margin-bottom: 1.5rem;">
-    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 1rem; border-radius: 0.75rem;">
-      <h3 style="margin-top:0; font-size:1rem;">Engine Detections</h3>
-      <div class="chart-container" style="height: 40px; margin-top: 0.5rem; max-width: 400px;">
-        <canvas id="vtEngineChart"></canvas>
-      </div>
-      <div class="key-value" style="font-size:0.85rem; margin-top:0.5rem; opacity:0.9;">
-        <div><span class="muted">Total Engines</span><strong>{{ vt.stats.total_engines }}</strong></div>
-        <div><span class="muted">Malicious / Suspicious</span><strong class="{{ 'score-phishing' if vt.stats.malicious_count > 0 else '' }}">{{ vt.stats.malicious_count }} / {{ vt.stats.suspicious_count }}</strong></div>
-        <div><span class="muted">Harmless / Undetected</span><strong>{{ vt.stats.harmless_count }} / {{ vt.stats.undetected_count }}</strong></div>
-      </div>
-    </div>
-
-    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 1rem; border-radius: 0.75rem;">
-      <h3 style="margin-top:0; font-size:1rem;">Community Votes</h3>
-      {% if vt.votes %}
-      <div class="chart-container" style="height: 40px; margin-top: 0.5rem; max-width: 400px;">
-        <canvas id="vtVotesChart"></canvas>
-      </div>
-      <div class="key-value" style="font-size:0.85rem; margin-top:0.5rem; opacity:0.9;">
-        <div><span class="muted">Harmless</span><strong class="score-safe">{{ vt.votes.harmless }}</strong></div>
-        <div><span class="muted">Malicious</span><strong class="{{ 'score-phishing' if vt.votes.malicious > 0 else '' }}">{{ vt.votes.malicious }}</strong></div>
-      </div>
-      {% else %}
-      <p class="muted" style="font-size:0.85rem;">No community votes recorded.</p>
+  {# URL Scan Subsection #}
+  <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border); padding: 1.25rem; border-radius: 0.75rem; margin-bottom: 1.5rem;">
+    <h3 style="margin-top: 0; margin-bottom: 1rem;">VirusTotal URL Scan</h3>
+    
+    {% if vt.verdict %}
+    <div style="display:flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+      {% set vt_mal = vt.stats.malicious_count if vt.stats else 0 %}
+      {% set vt_sus = vt.stats.suspicious_count if vt.stats else 0 %}
+      <span class="pill pill-{{ 'phishing' if vt_mal > 0 else ('suspicious' if vt_sus > 0 else 'safe') }}" style="font-size: 0.9rem; font-weight: bold;">{{ vt.verdict.detection_verdict }}</span>
+      {% if vt.verdict.category_context %}
+      <span class="pill pill-inactive" style="font-size: 0.85rem;">{{ vt.verdict.category_context }}</span>
       {% endif %}
-    </div>
-  </div>
-
-  {% if vt.dates and (vt.dates.first_submission_date or vt.dates.last_analysis_date) %}
-  <div class="milestone-row" style="margin-bottom: 1.5rem;">
-    {% if vt.dates.first_submission_date %}
-    <div class="milestone"><span class="milestone-label">First Submitted</span><span class="milestone-value">{{ vt.dates.first_submission_date }}</span></div>
-    {% endif %}
-    {% if vt.dates.last_submission_date %}
-    <div class="milestone"><span class="milestone-label">Last Submitted</span><span class="milestone-value">{{ vt.dates.last_submission_date }}</span></div>
-    {% endif %}
-    {% if vt.dates.last_analysis_date %}
-    <div class="milestone"><span class="milestone-label">Last Analysis</span><span class="milestone-value">{{ vt.dates.last_analysis_date }}</span></div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  <div class="key-value">
-
-    {% if vt.serving_ip %}
-    <div><span>Serving IP</span><span class="mono">{{ vt.serving_ip }}</span></div>
-    {% endif %}
-
-    {% if vt.final_url %}
-    <div><span>Final URL</span><span class="mono">{{ vt.final_url }}</span></div>
-    {% endif %}
-
-    {% if vt.redirection_chain and vt.redirection_chain|length > 0 %}
-    <div><span>VT Redirect Chain</span>
-      <span>
-        <ul class="bullet-list" style="margin:0; padding-left:1.2rem;">
-          {% for url in vt.redirection_chain %}<li class="mono" style="font-size:0.85em;">{{ url }}</li>{% endfor %}
-        </ul>
-      </span>
+      <span class="pill pill-inactive" style="font-size: 0.85rem;">{{ vt.verdict.reputation_context }} (Reputation: {{ vt.reputation }})</span>
     </div>
     {% endif %}
 
-    {% if (vt.categories and vt.categories|length > 0) or (vt.tags and vt.tags|length > 0) %}
-    <div><span>Classification</span>
-      <div style="display:flex; flex-wrap:wrap; gap:0.4rem; justify-content: flex-end; max-width: 400px;">
-        {% if vt.categories %}
-        {% for cat in vt.categories %}
-        <span class="pill" style="background: rgba(255,255,255,0.05);">{{ cat }}</span>
-        {% endfor %}
-        {% endif %}
-
-        {% if vt.tags %}
-        {% for tag in vt.tags[:10] %}
-        <span class="pill" style="font-size: 0.8em;">{{ tag }}</span>
-        {% endfor %}
-        {% if vt.tags|length > 10 %}
-        <span class="muted" style="font-size:0.8em; align-self:center;">+{{ vt.tags|length - 10 }} more</span>
-        {% endif %}
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    {% if vt.html_info and (vt.html_info.title or vt.html_info.meta) %}
-    <div><span>HTML Info</span>
-      <span>
-        {% if vt.html_info.title %}
-        <div><strong>Title:</strong> {{ vt.html_info.title }}</div>
-        {% endif %}
-        {% if vt.html_info.meta %}
-        {% for mk, mv in vt.html_info.meta.items() %}
-        <div style="font-size:0.85em;"><span class="muted">{{ mk }}:</span> {{ mv }}</div>
-        {% endfor %}
-        {% endif %}
-      </span>
-    </div>
-    {% endif %}
-
-    {% if vt.http_response %}
-    {% set http = vt.http_response %}
-    {% if http.status_code or http.content_length or http.headers %}
-    <div><span>HTTP Response</span>
-      <span>
-        {% if http.status_code %}
-        <div>Status Code: <strong>{{ http.status_code }}</strong></div>
-        {% endif %}
-        {% if http.content_length %}
-        <div>Body Length: {{ http.content_length }} bytes</div>
-        {% endif %}
-        {% if http.headers %}
-        {% for hk, hv in http.headers.items() %}
-        <div style="font-size:0.85em;"><span class="muted">{{ hk }}:</span> {{ hv }}</div>
-        {% endfor %}
-        {% endif %}
-      </span>
-    </div>
-    {% endif %}
-    {% endif %}
-
-    {% if vt.favicon %}
-    <div><span>Favicon</span>
-      <span>
-        {% if vt.favicon.get('raw_md5') %}<div style="font-size:0.85em;">MD5: <code>{{ vt.favicon.raw_md5 }}</code></div>{% endif %}
-        {% if vt.favicon.get('raw_sha1') %}<div style="font-size:0.85em;">SHA1: <code>{{ vt.favicon.raw_sha1 }}</code></div>{% endif %}
-        {% if vt.favicon.get('raw_sha256') %}<div style="font-size:0.85em;">SHA256: <code>{{ vt.favicon.raw_sha256 }}</code></div>{% endif %}
-      </span>
-    </div>
-    {% endif %}
-
-    {% if vt.outgoing_links and vt.outgoing_links|length > 0 %}
-    <div><span>Outbound Links</span>
-      <span>
-        <ul class="bullet-list" style="margin:0; padding-left:1.2rem;">
-          {% for link in vt.outgoing_links[:8] %}
-          <li class="mono" style="font-size:0.8em; word-break:break-all;">{{ link }}</li>
-          {% endfor %}
-          {% if vt.outgoing_links|length > 8 %}
-          <li class="muted" style="font-size:0.8em;">+{{ vt.outgoing_links|length - 8 }} more (showing {{ vt.outgoing_links_count }} total)</li>
-          {% endif %}
-        </ul>
-      </span>
-    </div>
-    {% endif %}
-
-    {% if vt.top_engine_hits and vt.top_engine_hits|length > 0 %}
-    <div style="display: block; border-bottom: 1px solid var(--border); padding: 0.5rem 0;">
-      <div style="margin-bottom: 0.5rem;"><span>Top Flagged Engines</span></div>
-      <div class="factors-list">
-        {% for engine in vt.top_engine_hits %}
-        <div class="factor-item" style="background: rgba(255,255,255,0.02); padding: 0.4rem 0.6rem; border-radius: 0.5rem; display: flex; justify-content: space-between;">
-          <span><strong>{{ engine.engine_name }}</strong></span>
-          <span style="font-size: 0.85em;"><span class="score-phishing">{{ engine.category }}</span> — {{ engine.result }}</span>
+    <div class="grid two-up" style="margin-bottom: 1.5rem;">
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 1rem; border-radius: 0.75rem;">
+        <h4 style="margin-top:0; font-size:0.9rem; color: var(--muted); margin-bottom: 0.75rem;">Engine Detections</h4>
+        <div class="chart-container" style="height: 40px; max-width: 400px;">
+          <canvas id="vtEngineChart"></canvas>
         </div>
-        {% endfor %}
+        <div class="key-value" style="font-size:0.85rem; margin-top:0.5rem; opacity:0.9;">
+          <div><span class="muted">Total Engines</span><strong>{{ vt.stats.total_engines if vt.stats else 0 }}</strong></div>
+          <div><span class="muted">Malicious / Suspicious</span><strong class="{{ 'score-phishing' if vt_mal > 0 else '' }}">{{ vt_mal }} / {{ vt_sus }}</strong></div>
+          <div><span class="muted">Harmless / Undetected</span><strong>{{ (vt.stats.harmless_count if vt.stats else 0) }} / {{ (vt.stats.undetected_count if vt.stats else 0) }}</strong></div>
+        </div>
       </div>
-      {% if vt.additional_flagged_engines and vt.additional_flagged_engines > 0 %}
-      <div class="muted" style="font-size: 0.85em; margin-top: 0.5rem;">+ {{ vt.additional_flagged_engines }} additional flagged engines not shown.</div>
+
+      <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 1rem; border-radius: 0.75rem;">
+        <h4 style="margin-top:0; font-size:0.9rem; color: var(--muted); margin-bottom: 0.75rem;">Community Votes</h4>
+        {% if vt.votes %}
+        <div class="chart-container" style="height: 40px; max-width: 400px;">
+          <canvas id="vtVotesChart"></canvas>
+        </div>
+        <div class="key-value" style="font-size:0.85rem; margin-top:0.5rem; opacity:0.9;">
+          <div><span class="muted">Harmless</span><strong class="score-safe">{{ vt.votes.harmless }}</strong></div>
+          <div><span class="muted">Malicious</span><strong class="{{ 'score-phishing' if vt.votes.malicious > 0 else '' }}">{{ vt.votes.malicious }}</strong></div>
+        </div>
+        {% else %}
+        <p class="muted" style="font-size:0.85rem;">No community votes recorded.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if vt.dates and (vt.dates.first_submission_date or vt.dates.last_analysis_date) %}
+    <div class="milestone-row" style="margin-bottom: 1.5rem;">
+      {% if vt.dates.first_submission_date %}
+      <div class="milestone"><span class="milestone-label">First Submitted</span><span class="milestone-value">{{ vt.dates.first_submission_date }}</span></div>
+      {% endif %}
+      {% if vt.dates.last_submission_date %}
+      <div class="milestone"><span class="milestone-label">Last Submitted</span><span class="milestone-value">{{ vt.dates.last_submission_date }}</span></div>
+      {% endif %}
+      {% if vt.dates.last_analysis_date %}
+      <div class="milestone"><span class="milestone-label">Last Analysis</span><span class="milestone-value">{{ vt.dates.last_analysis_date }}</span></div>
       {% endif %}
     </div>
     {% endif %}
 
-    {% if vt.jarm %}
-    <div><span>JARM Fingerprint</span><span><code style="font-size:0.85em;">{{ vt.jarm }}</code></span></div>
-    {% endif %}
+    <div class="key-value">
+      {% if vt.serving_ip %}
+      <div><span>Serving IP</span><span class="mono">{{ vt.serving_ip }}</span></div>
+      {% endif %}
 
-    {% if vt.permalink %}
-    <div><span>Report</span><span><a href="{{ vt.permalink }}" target="_blank" rel="noopener noreferrer">View URL on VirusTotal</a></span></div>
-    {% endif %}
+      {% if vt.final_url %}
+      <div><span>Final URL</span><span class="mono">{{ vt.final_url }}</span></div>
+      {% endif %}
+
+      {% if vt.redirection_chain and vt.redirection_chain|length > 0 %}
+      <div><span>VT Redirect Chain</span>
+        <span>
+          <ul class="bullet-list" style="margin:0; padding-left:1.2rem;">
+            {% for url in vt.redirection_chain %}<li class="mono" style="font-size:0.85em;">{{ url }}</li>{% endfor %}
+          </ul>
+        </span>
+      </div>
+      {% endif %}
+
+      {% if (vt.categories and vt.categories|length > 0) or (vt.tags and vt.tags|length > 0) %}
+      <div><span>Classification</span>
+        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; justify-content: flex-end; max-width: 400px;">
+          {% if vt.categories %}
+          {% for cat in vt.categories %}
+          <span class="pill pill-inactive" style="font-size: 0.8em; font-weight: 500;">{{ cat }}</span>
+          {% endfor %}
+          {% endif %}
+
+          {% if vt.tags %}
+          {% for tag in vt.tags[:10] %}
+          <span class="pill pill-inactive" style="font-size: 0.8em; font-weight: 500;">{{ tag }}</span>
+          {% endfor %}
+          {% if vt.tags|length > 10 %}
+          <span class="muted" style="font-size:0.8em; align-self:center;">+{{ vt.tags|length - 10 }} more</span>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if vt.html_info and (vt.html_info.title or vt.html_info.meta) %}
+      <div><span>HTML Info</span>
+        <span>
+          {% if vt.html_info.title %}
+          <div><strong>Title:</strong> {{ vt.html_info.title }}</div>
+          {% endif %}
+          {% if vt.html_info.meta and vt.html_info.meta is mapping %}
+          {% for mk, mv in vt.html_info.meta.items() %}
+          <div style="font-size:0.85em;"><span class="muted">{{ mk }}:</span> {{ mv }}</div>
+          {% endfor %}
+          {% endif %}
+        </span>
+      </div>
+      {% endif %}
+
+      {% if vt.favicon %}
+      <div><span>Favicon MD5</span><span class="mono">{{ vt.favicon.raw_md5 or 'N/A' }}</span></div>
+      {% endif %}
+
+      {% if vt.outgoing_links and vt.outgoing_links|length > 0 %}
+      <div><span>Outbound Links</span><span>{{ vt.outgoing_links_count }} total outbound links scanned.</span></div>
+      {% endif %}
+
+      {% if vt.top_engine_hits and vt.top_engine_hits|length > 0 %}
+      <div style="display: block; border-bottom: 1px solid var(--border); padding: 0.5rem 0;">
+        <div style="margin-bottom: 0.5rem;"><span>Top Flagged Engines</span></div>
+        <div class="factors-list">
+          {% for engine in vt.top_engine_hits %}
+          <div class="factor-item" style="background: rgba(255,255,255,0.02); padding: 0.4rem 0.6rem; border-radius: 0.5rem; display: flex; justify-content: space-between;">
+            <span><strong>{{ engine.engine_name }}</strong></span>
+            <span style="font-size: 0.85em;"><span class="score-phishing">{{ engine.category }}</span> — {{ engine.result }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% if vt.additional_flagged_engines and vt.additional_flagged_engines > 0 %}
+        <div class="muted" style="font-size: 0.85em; margin-top: 0.5rem;">+ {{ vt.additional_flagged_engines }} additional flagged engines not shown.</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if vt.permalink %}
+      <div><span>Scan Details</span><span><a href="{{ vt.permalink }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">View URL Scan on VirusTotal &rarr;</a></span></div>
+      {% endif %}
+    </div>
   </div>
 
+  {# Domain Scan Subsection #}
   {% if vt.domain_report and vt.domain_report.status == 'success' %}
-  <div style="margin-top: 2rem; border-top: 1px solid var(--border, #ddd); padding-top: 1.5rem;">
-    <h3>VirusTotal Domain Scan</h3>
+  <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border); padding: 1.25rem; border-radius: 0.75rem; margin-bottom: 1.5rem;">
+    <h3 style="margin-top: 0; margin-bottom: 1rem;">VirusTotal Domain Scan</h3>
     <div class="key-value">
       <div><span>Domain</span><span>{{ data.domain }}</span></div>
-      {% set dstats = vt.domain_report.last_analysis_stats %}
-      <div><span>Detections</span><span class="{{ 'score-phishing' if dstats.malicious > 0 else ('score-suspicious' if dstats.suspicious > 0 else 'score-safe') }}">{{ dstats.malicious }} malicious / {{ dstats.suspicious }} suspicious (out of {{ dstats.harmless + dstats.malicious + dstats.suspicious + dstats.undetected }})</span></div>
+      {% set dstats = vt.domain_report.last_analysis_stats if vt.domain_report else {} %}
+      <div><span>Detections</span><span class="{{ 'score-phishing' if dstats.get('malicious', 0) > 0 else ('score-suspicious' if dstats.get('suspicious', 0) > 0 else 'score-safe') }}">{{ dstats.get('malicious', 0) }} malicious / {{ dstats.get('suspicious', 0) }} suspicious (out of {{ (dstats.get('harmless', 0) + dstats.get('malicious', 0) + dstats.get('suspicious', 0) + dstats.get('undetected', 0)) }})</span></div>
       <div><span>Reputation Score</span><span>{{ vt.domain_report.reputation }}</span></div>
       {% if vt.domain_report.registrar %}
       <div><span>Registrar</span><span>{{ vt.domain_report.registrar }}</span></div>
@@ -515,19 +657,20 @@
       <div><span>Last Resolved IPs</span><span>{{ vt.domain_report.resolved_ips | join(', ') }}</span></div>
       {% endif %}
       {% if vt.domain_report.permalink %}
-      <div><span>Report URL</span><span><a href="{{ vt.domain_report.permalink }}" target="_blank" rel="noopener noreferrer">View Domain on VirusTotal</a></span></div>
+      <div><span>Scan Details</span><span><a href="{{ vt.domain_report.permalink }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">View Domain on VirusTotal &rarr;</a></span></div>
       {% endif %}
     </div>
   </div>
   {% endif %}
 
+  {# IP Scan Subsection #}
   {% if vt.ip_report and vt.ip_report.status == 'success' %}
-  <div style="margin-top: 2rem; border-top: 1px solid var(--border, #ddd); padding-top: 1.5rem;">
-    <h3>VirusTotal Serving IP Scan</h3>
+  <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border); padding: 1.25rem; border-radius: 0.75rem;">
+    <h3 style="margin-top: 0; margin-bottom: 1rem;">VirusTotal Serving IP Scan</h3>
     <div class="key-value">
       <div><span>Serving IP</span><span class="mono">{{ vt.ip_report.ipAddress or vt.ip_report.resolved_ip or vt.serving_ip or '' }}</span></div>
-      {% set ipstats = vt.ip_report.last_analysis_stats %}
-      <div><span>Detections</span><span class="{{ 'score-phishing' if ipstats.malicious > 0 else ('score-suspicious' if ipstats.suspicious > 0 else 'score-safe') }}">{{ ipstats.malicious }} malicious / {{ ipstats.suspicious }} suspicious (out of {{ ipstats.harmless + ipstats.malicious + ipstats.suspicious + ipstats.undetected }})</span></div>
+      {% set ipstats = vt.ip_report.last_analysis_stats if vt.ip_report else {} %}
+      <div><span>Detections</span><span class="{{ 'score-phishing' if ipstats.get('malicious', 0) > 0 else ('score-suspicious' if ipstats.get('suspicious', 0) > 0 else 'score-safe') }}">{{ ipstats.get('malicious', 0) }} malicious / {{ ipstats.get('suspicious', 0) }} suspicious (out of {{ (ipstats.get('harmless', 0) + ipstats.get('malicious', 0) + ipstats.get('suspicious', 0) + ipstats.get('undetected', 0)) }})</span></div>
       <div><span>Reputation Score</span><span>{{ vt.ip_report.reputation }}</span></div>
       {% if vt.ip_report.as_owner %}
       <div><span>AS Owner</span><span>{{ vt.ip_report.as_owner }} (ASN: {{ vt.ip_report.asn or 'N/A' }})</span></div>
@@ -543,7 +686,7 @@
       <div><span>HTTPS Cert Issuer</span><span>{{ vt.ip_report.cert_issuer or 'N/A' }}</span></div>
       {% endif %}
       {% if vt.ip_report.permalink %}
-      <div><span>Report URL</span><span><a href="{{ vt.ip_report.permalink }}" target="_blank" rel="noopener noreferrer">View IP on VirusTotal</a></span></div>
+      <div><span>Scan Details</span><span><a href="{{ vt.ip_report.permalink }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: underline;">View IP on VirusTotal &rarr;</a></span></div>
       {% endif %}
     </div>
   </div>
@@ -570,7 +713,7 @@
 {% if not (data.features_summary and data.features_summary.page_signals and data.features_summary.page_signals.vt_summary) %}
 <section class="card">
   <h2>VirusTotal Enrichment</h2>
-  <p class="muted"><span class="pill pill-suspicious" style="background: rgba(158, 176, 203, 0.2); color: var(--muted);">Not Available</span> VirusTotal enrichment is not enabled or data is missing.</p>
+  <p class="muted"><span class="pill pill-inactive">Not Available</span> VirusTotal enrichment is not enabled or data is missing.</p>
 </section>
 {% endif %}
 
@@ -633,7 +776,7 @@
 {% else %}
 <section class="card">
   <h2>Safe Browsing Enrichment</h2>
-  <p class="muted"><span class="pill pill-suspicious" style="background: rgba(158, 176, 203, 0.2); color: var(--muted);">Not Available</span> Safe Browsing data is missing.</p>
+  <p class="muted"><span class="pill pill-inactive">Not Available</span> Safe Browsing data is missing.</p>
 </section>
 {% endif %}
 
@@ -697,7 +840,7 @@
     </span></div>
     {% endif %}
 
-    {% if us.response_headers %}
+    {% if us.response_headers and us.response_headers is mapping %}
     <div><span>Curated Response Headers</span>
       <span>
         {% for hk, hv in us.response_headers.items() %}
@@ -742,7 +885,7 @@
 {% else %}
 <section class="card">
   <h2>Urlscan.io Enrichment</h2>
-  <p class="muted"><span class="pill pill-suspicious" style="background: rgba(158, 176, 203, 0.2); color: var(--muted);">Not Available</span> Urlscan.io data is missing.</p>
+  <p class="muted"><span class="pill pill-inactive">Not Available</span> Urlscan.io data is missing.</p>
 </section>
 {% endif %}
 
@@ -789,34 +932,81 @@
 {% else %}
 <section class="card">
   <h2>AbuseIPDB Enrichment</h2>
-  <p class="muted"><span class="pill pill-suspicious" style="background: rgba(158, 176, 203, 0.2); color: var(--muted);">Not Available</span> AbuseIPDB data is missing.</p>
+  <p class="muted"><span class="pill pill-inactive">Not Available</span> AbuseIPDB data is missing.</p>
 </section>
 {% endif %}
 
 {% if data.redirect_chain and data.redirect_chain|length > 1 %}
 <section class="card">
-  <h2>Redirect Chain ({{ data.redirect_chain|length - 1 }} Hops)</h2>
+  <h2>Redirect Chain ({{ data.redirect_chain|length - 1 }} Hop{{ 's' if (data.redirect_chain|length - 1) > 1 else '' }})</h2>
   <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
-    {% for url in data.redirect_chain %}
-    <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 24px; padding-top: 0.2rem;">
-        <div style="width: 12px; height: 12px; border-radius: 50%; background: {{ 'var(--success)' if loop.first else ('var(--danger)' if loop.last else 'var(--warning)') }};"></div>
-        {% if not loop.last %}
-        <div style="width: 2px; height: 20px; background: var(--border);"></div>
-        {% endif %}
+    {% set total_hops = data.redirect_chain|length %}
+    {% set max_visible = 5 %}
+    
+    {% if total_hops <= max_visible %}
+      {% for url in data.redirect_chain %}
+      <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 24px; padding-top: 0.2rem;">
+          <div style="width: 12px; height: 12px; border-radius: 50%; background: {{ 'var(--success)' if loop.first else ('var(--danger)' if loop.last else 'var(--warning)') }};"></div>
+          {% if not loop.last %}
+          <div style="width: 2px; height: 20px; background: var(--border);"></div>
+          {% endif %}
+        </div>
+        <div style="padding-bottom: 0.5rem; word-break: break-all;">
+          <span class="mono" style="font-size: 0.85em; opacity: {{ '1' if loop.last else '0.85' }}; font-weight: {{ '600' if loop.last else 'normal' }};">{{ url }}</span>
+          {% if loop.first %}
+          <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Initial Request</div>
+          {% elif loop.last %}
+          <div class="score-{{ 'phishing' if data.risk_score >= 50 else ('suspicious' if data.risk_score >= 25 else 'safe') }}" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Final Destination</div>
+          {% else %}
+          <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Hop {{ loop.index0 }}</div>
+          {% endif %}
+        </div>
       </div>
-      <div style="padding-bottom: 0.5rem; word-break: break-all;">
-        <span class="mono" style="font-size: 0.85em; opacity: {{ '1' if loop.last else '0.85' }}; font-weight: {{ '600' if loop.last else 'normal' }};">{{ url }}</span>
-        {% if loop.first %}
-        <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Initial Request</div>
-        {% elif loop.last %}
-        <div class="score-{{ 'phishing' if data.risk_score >= 70 else ('suspicious' if data.risk_score >= 40 else 'safe') }}" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Final Destination</div>
-        {% else %}
-        <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Hop {{ loop.index0 }}</div>
-        {% endif %}
+      {% endfor %}
+    {% else %}
+      {# Show first (max_visible - 2) hops #}
+      {% for i in range(max_visible - 2) %}
+      {% set url = data.redirect_chain[i] %}
+      <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 24px; padding-top: 0.2rem;">
+          <div style="width: 12px; height: 12px; border-radius: 50%; background: {{ 'var(--success)' if i == 0 else 'var(--warning)' }};"></div>
+          <div style="width: 2px; height: 20px; background: var(--border);"></div>
+        </div>
+        <div style="padding-bottom: 0.5rem; word-break: break-all;">
+          <span class="mono" style="font-size: 0.85em; opacity: 0.85;">{{ url }}</span>
+          {% if i == 0 %}
+          <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Initial Request</div>
+          {% else %}
+          <div class="muted" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Hop {{ i }}</div>
+          {% endif %}
+        </div>
       </div>
-    </div>
-    {% endfor %}
+      {% endfor %}
+
+      {# Truncated Hops Indicator #}
+      <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 24px; padding-top: 0.2rem;">
+          <div style="width: 12px; height: 12px; border-radius: 50%; background: var(--muted); opacity: 0.5;"></div>
+          <div style="width: 2px; height: 20px; background: var(--border);"></div>
+        </div>
+        <div style="padding-bottom: 0.5rem;">
+          <span class="muted" style="font-size: 0.85em; font-style: italic;">+ {{ total_hops - max_visible + 1 }} intermediate hops hidden...</span>
+        </div>
+      </div>
+
+      {# Final Hop #}
+      {% set final_url = data.redirect_chain[total_hops - 1] %}
+      <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.2rem; min-width: 24px; padding-top: 0.2rem;">
+          <div style="width: 12px; height: 12px; border-radius: 50%; background: var(--danger);"></div>
+        </div>
+        <div style="padding-bottom: 0.5rem; word-break: break-all;">
+          <span class="mono" style="font-size: 0.85em; font-weight: 600;">{{ final_url }}</span>
+          <div class="score-{{ 'phishing' if data.risk_score >= 50 else ('suspicious' if data.risk_score >= 25 else 'safe') }}" style="font-size: 0.75em; text-transform: uppercase; margin-top: 0.2rem;">Final Destination</div>
+        </div>
+      </div>
+    {% endif %}
   </div>
 </section>
 {% endif %}
@@ -902,8 +1092,8 @@ document.addEventListener('DOMContentLoaded', function() {
         labels: ['Risk Contribution'],
         datasets: [
           { label: 'Local Heuristics', data: [local], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim() || '#f59e0b', stack: 'Stack 0' },
-          { label: 'Domain Structural', data: [domain], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#ef4444', stack: 'Stack 0' },
-          { label: 'External Threat', data: [external], backgroundColor: '#991b1b', stack: 'Stack 0' },
+          { label: 'Domain Structural', data: [domain], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4f8cff', stack: 'Stack 0' },
+          { label: 'External Threat', data: [external], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#ef4444', stack: 'Stack 0' },
           { label: 'Trust Mitigations', data: [-trust], backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#22c55e', stack: 'Stack 0' }
         ]
       },
